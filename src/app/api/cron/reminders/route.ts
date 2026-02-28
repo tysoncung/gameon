@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { connectDB } from "@/lib/mongodb";
+import { Game, Group, Player, Reminder } from "@/lib/models";
 import { sendWhatsApp } from "@/lib/twilio";
 import { buildStatusMessage } from "@/lib/whatsapp-bot";
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret to prevent unauthorized calls
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
@@ -13,15 +13,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    await connectDB();
     const now = new Date();
     const results: string[] = [];
 
-    // Find games that need 24h or 2h reminders
-    const { data: upcomingGames } = await supabase
-      .from("games")
-      .select("*, groups!inner(*)")
-      .eq("status", "upcoming")
-      .gte("date", now.toISOString().split("T")[0]);
+    const upcomingGames = await Game.find({
+      status: "upcoming",
+      date: { $gte: now.toISOString().split("T")[0] },
+    }).lean();
 
     if (!upcomingGames || upcomingGames.length === 0) {
       return NextResponse.json({ message: "No upcoming games", sent: [] });
@@ -42,26 +41,20 @@ export async function GET(req: NextRequest) {
       if (!reminderType) continue;
 
       // Check if reminder already sent
-      const { data: existing } = await supabase
-        .from("reminders")
-        .select("id")
-        .eq("game_id", game.id)
-        .eq("reminder_type", reminderType)
-        .single();
+      const existing = await Reminder.findOne({
+        gameId: game._id,
+        reminderType,
+      });
 
       if (existing) continue;
 
-      // Get all players in this group with phone numbers
-      const { data: players } = await supabase
-        .from("players")
-        .select("phone, name")
-        .eq("group_id", game.group_id);
-
+      const players = await Player.find({ groupId: game.groupId }).lean();
       if (!players || players.length === 0) continue;
 
-      // Build reminder message
-      const status = await buildStatusMessage(game.id);
-      const group = (game as any).groups;
+      const group = await Group.findById(game.groupId).lean();
+      if (!group) continue;
+
+      const status = await buildStatusMessage(game._id.toString());
       const timeLabel = reminderType === "24h" ? "tomorrow" : "in 2 hours";
 
       const reminder =
@@ -70,7 +63,6 @@ export async function GET(req: NextRequest) {
         `${status}\n\n` +
         `Haven't RSVP'd? Reply "in" or "out" now!`;
 
-      // Send to all players
       for (const player of players) {
         try {
           await sendWhatsApp(player.phone, reminder);
@@ -79,13 +71,12 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Mark reminder as sent
-      await supabase.from("reminders").insert({
-        game_id: game.id,
-        reminder_type: reminderType,
+      await Reminder.create({
+        gameId: game._id,
+        reminderType,
       });
 
-      results.push(`Sent ${reminderType} reminder for game ${game.id} to ${players.length} players`);
+      results.push(`Sent ${reminderType} reminder for game ${game._id} to ${players.length} players`);
     }
 
     return NextResponse.json({ message: "Reminders processed", sent: results });

@@ -2,16 +2,40 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { supabase, type Group, type Game, type Rsvp } from "@/lib/supabase";
 import { formatDate, formatTime, hashPin } from "@/lib/utils";
 
-type RsvpWithGame = Rsvp & { games?: Game; guests?: number };
+type GroupData = {
+  _id: string;
+  name: string;
+  sport: string;
+  location: string;
+  inviteCode: string;
+  adminPin: string;
+};
+
+type GameData = {
+  _id: string;
+  date: string;
+  time: string;
+  location: string;
+  capacity: number;
+  status: string;
+};
+
+type RsvpData = {
+  _id: string;
+  playerName: string;
+  status: string;
+  guests: number;
+  waitlistPosition: number | null;
+  createdAt: string;
+};
 
 export default function AdminDashboard() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
-  const [games, setGames] = useState<Game[]>([]);
-  const [rsvpFeed, setRsvpFeed] = useState<RsvpWithGame[]>([]);
+  const [groups, setGroups] = useState<GroupData[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<GroupData | null>(null);
+  const [games, setGames] = useState<GameData[]>([]);
+  const [rsvpFeed, setRsvpFeed] = useState<RsvpData[]>([]);
   const [loading, setLoading] = useState(true);
   const [pin, setPin] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
@@ -19,78 +43,60 @@ export default function AdminDashboard() {
   const [announceResult, setAnnounceResult] = useState<string | null>(null);
 
   useEffect(() => {
-    loadGroups();
+    fetch("/api/groups")
+      .then((r) => r.json())
+      .then((data) => {
+        setGroups(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  async function loadGroups() {
-    const { data } = await supabase.from("groups").select("*").order("created_at", { ascending: false });
-    setGroups(data || []);
-    setLoading(false);
-  }
-
-  const selectGroup = useCallback(async (group: Group) => {
+  const selectGroup = useCallback(async (group: GroupData) => {
     setSelectedGroup(group);
     setAuthenticated(false);
     setPin("");
 
-    // Load games
-    const { data: gamesList } = await supabase
-      .from("games")
-      .select("*")
-      .eq("group_id", group.id)
-      .order("date", { ascending: false });
-    setGames(gamesList || []);
+    const res = await fetch(`/api/groups/${group.inviteCode}`);
+    const data = await res.json();
+    setGames(data.games || []);
   }, []);
 
   const authenticate = () => {
     if (!selectedGroup) return;
-    if (hashPin(pin) === selectedGroup.pin_hash) {
+    if (hashPin(pin) === selectedGroup.adminPin) {
       setAuthenticated(true);
-      loadRsvpFeed(selectedGroup.id);
+      loadRsvpFeed();
     } else {
       alert("Invalid PIN");
     }
   };
 
-  async function loadRsvpFeed(groupId: string) {
-    const { data: groupGames } = await supabase
-      .from("games")
-      .select("id")
-      .eq("group_id", groupId);
-
-    if (!groupGames || groupGames.length === 0) return;
-
-    const gameIds = groupGames.map((g) => g.id);
-
-    const { data: rsvps } = await supabase
-      .from("rsvps")
-      .select("*")
-      .in("game_id", gameIds)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    setRsvpFeed((rsvps || []) as RsvpWithGame[]);
-  }
-
-  // Realtime RSVP subscription
-  useEffect(() => {
-    if (!authenticated || !selectedGroup) return;
-
-    const channel = supabase
-      .channel("admin-rsvps")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "rsvps" },
-        () => {
-          loadRsvpFeed(selectedGroup.id);
+  const loadRsvpFeed = useCallback(async () => {
+    if (!games.length) return;
+    // Load RSVPs for all games
+    const allRsvps: RsvpData[] = [];
+    for (const game of games.slice(0, 5)) {
+      try {
+        const res = await fetch(`/api/games/${game._id}`);
+        const data = await res.json();
+        if (data.rsvps) {
+          allRsvps.push(...data.rsvps);
         }
-      )
-      .subscribe();
+      } catch {
+        // ignore
+      }
+    }
+    allRsvps.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    setRsvpFeed(allRsvps.slice(0, 50));
+  }, [games]);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [authenticated, selectedGroup]);
+  // Poll for updates
+  useEffect(() => {
+    if (!authenticated) return;
+    const interval = setInterval(loadRsvpFeed, 15000);
+    return () => clearInterval(interval);
+  }, [authenticated, loadRsvpFeed]);
 
   const sendAnnouncement = async (gameId: string) => {
     setAnnouncing(gameId);
@@ -131,7 +137,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Group selector */}
       {!selectedGroup ? (
         <div>
           <h2 className="mb-3 text-lg font-semibold text-[#a3a3a3]">Select a Group</h2>
@@ -141,7 +146,7 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               {groups.map((g) => (
                 <button
-                  key={g.id}
+                  key={g._id}
                   onClick={() => selectGroup(g)}
                   className="block w-full rounded-xl border border-[#262626] bg-[#141414] p-4 text-left transition hover:border-[#10b981]"
                 >
@@ -188,7 +193,6 @@ export default function AdminDashboard() {
           </button>
           <h2 className="mb-6 text-lg font-semibold">{selectedGroup.name}</h2>
 
-          {/* Games with announce buttons */}
           <div className="mb-8">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#a3a3a3]">
               Games
@@ -201,7 +205,7 @@ export default function AdminDashboard() {
                   const isUpcoming = game.date >= new Date().toISOString().split("T")[0] && game.status !== "cancelled";
                   return (
                     <div
-                      key={game.id}
+                      key={game._id}
                       className="rounded-xl border border-[#262626] bg-[#141414] p-4"
                     >
                       <div className="flex items-center justify-between">
@@ -213,7 +217,7 @@ export default function AdminDashboard() {
                             {game.location || "TBD"} -- Cap: {game.capacity}
                           </p>
                           <Link
-                            href={`/g/${selectedGroup.invite_code}/game/${game.id}`}
+                            href={`/g/${selectedGroup.inviteCode}/game/${game._id}`}
                             className="mt-1 inline-block text-xs text-[#10b981] hover:underline"
                           >
                             View RSVP page
@@ -221,11 +225,11 @@ export default function AdminDashboard() {
                         </div>
                         {isUpcoming && (
                           <button
-                            onClick={() => sendAnnouncement(game.id)}
-                            disabled={announcing === game.id}
+                            onClick={() => sendAnnouncement(game._id)}
+                            disabled={announcing === game._id}
                             className="shrink-0 rounded-lg bg-[#10b981] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#059669] disabled:opacity-50"
                           >
-                            {announcing === game.id ? "Sending..." : "Send Announcement"}
+                            {announcing === game._id ? "Sending..." : "Send Announcement"}
                           </button>
                         )}
                       </div>
@@ -239,7 +243,6 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          {/* Live RSVP feed */}
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#a3a3a3]">
               Live RSVP Feed
@@ -250,27 +253,27 @@ export default function AdminDashboard() {
               <div className="space-y-2">
                 {rsvpFeed.map((rsvp) => (
                   <div
-                    key={rsvp.id}
+                    key={rsvp._id}
                     className="flex items-center justify-between rounded-lg bg-[#141414] px-4 py-3"
                   >
                     <div className="flex items-center gap-3">
                       <StatusBadge status={rsvp.status} />
                       <div>
-                        <span className="font-medium">{rsvp.player_name}</span>
-                        {(rsvp as any).guests > 0 && (
+                        <span className="font-medium">{rsvp.playerName}</span>
+                        {rsvp.guests > 0 && (
                           <span className="ml-1 text-sm text-[#a3a3a3]">
-                            (+{(rsvp as any).guests})
+                            (+{rsvp.guests})
                           </span>
                         )}
-                        {rsvp.waitlist_position && (
+                        {rsvp.waitlistPosition && (
                           <span className="ml-2 text-xs text-yellow-500">
-                            waitlist #{rsvp.waitlist_position}
+                            waitlist #{rsvp.waitlistPosition}
                           </span>
                         )}
                       </div>
                     </div>
                     <span className="text-xs text-[#a3a3a3]">
-                      {new Date(rsvp.created_at).toLocaleString()}
+                      {new Date(rsvp.createdAt).toLocaleString()}
                     </span>
                   </div>
                 ))}

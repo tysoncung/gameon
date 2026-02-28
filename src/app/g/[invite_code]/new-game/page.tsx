@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase, type Group } from "@/lib/supabase";
-import { hashPin } from "@/lib/utils";
+
+type GroupData = {
+  name: string;
+  location: string;
+  defaultCapacity: number;
+};
 
 export default function NewGame() {
   const params = useParams();
   const router = useRouter();
   const inviteCode = params.invite_code as string;
-  const [group, setGroup] = useState<Group | null>(null);
+  const [group, setGroup] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(false);
   const [pin, setPin] = useState("");
   const [form, setForm] = useState({
@@ -18,22 +22,19 @@ export default function NewGame() {
     time: "10:00",
     location: "",
     capacity: 10,
-    recurring: "",
+    recurring: false,
   });
 
   useEffect(() => {
-    supabase
-      .from("groups")
-      .select("*")
-      .eq("invite_code", inviteCode)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setGroup(data);
+    fetch(`/api/groups/${inviteCode}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.group) {
+          setGroup(data.group);
           setForm((f) => ({
             ...f,
-            location: data.location,
-            capacity: data.default_capacity,
+            location: data.group.location || "",
+            capacity: data.group.defaultCapacity || 10,
           }));
         }
       });
@@ -41,26 +42,23 @@ export default function NewGame() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!group || !form.date || !pin) return;
-
-    if (hashPin(pin) !== group.pin_hash) {
-      alert("Invalid PIN");
-      return;
-    }
+    if (!form.date || !pin) return;
 
     setLoading(true);
 
-    const { error } = await supabase.from("games").insert({
-      group_id: group.id,
-      date: form.date,
-      time: form.time,
-      location: form.location,
-      capacity: form.capacity,
-      recurring: form.recurring || null,
+    const res = await fetch("/api/games", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        inviteCode,
+        pin,
+        ...form,
+      }),
     });
 
-    if (error) {
-      alert("Error: " + error.message);
+    const data = await res.json();
+    if (!res.ok) {
+      alert("Error: " + data.error);
       setLoading(false);
       return;
     }
@@ -126,17 +124,13 @@ export default function NewGame() {
           />
         </label>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-[#a3a3a3]">Recurring</span>
-          <select
-            value={form.recurring}
-            onChange={(e) => setForm({ ...form, recurring: e.target.value })}
-            className="input"
-          >
-            <option value="">One-time</option>
-            <option value="weekly">Weekly</option>
-            <option value="biweekly">Biweekly</option>
-          </select>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={form.recurring}
+            onChange={(e) => setForm({ ...form, recurring: e.target.checked })}
+          />
+          <span className="text-sm text-[#a3a3a3]">Recurring game</span>
         </label>
 
         <label className="block">

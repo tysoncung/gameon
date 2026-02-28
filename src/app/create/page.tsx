@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { generateInviteCode, hashPin, SPORTS } from "@/lib/utils";
+import { SPORTS } from "@/lib/utils";
 import Link from "next/link";
 
 export default function CreateGroup() {
@@ -12,9 +11,8 @@ export default function CreateGroup() {
   const [form, setForm] = useState({
     name: "",
     sport: "Soccer",
-    default_capacity: 10,
+    defaultCapacity: 10,
     location: "",
-    organizer: "",
     pin: "",
   });
 
@@ -23,25 +21,21 @@ export default function CreateGroup() {
     if (!form.name || !form.pin || form.pin.length < 4) return;
 
     setLoading(true);
-    const invite_code = generateInviteCode();
 
-    const { error } = await supabase.from("groups").insert({
-      name: form.name,
-      sport: form.sport,
-      default_capacity: form.default_capacity,
-      location: form.location,
-      created_by: form.organizer || "Organizer",
-      invite_code,
-      pin_hash: hashPin(form.pin),
+    const res = await fetch("/api/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
     });
 
-    if (error) {
-      alert("Error creating group: " + error.message);
+    const data = await res.json();
+    if (!res.ok) {
+      alert("Error creating group: " + data.error);
       setLoading(false);
       return;
     }
 
-    router.push(`/g/${invite_code}`);
+    router.push(`/g/${data.inviteCode}`);
   };
 
   return (
@@ -80,8 +74,8 @@ export default function CreateGroup() {
             type="number"
             min={2}
             max={100}
-            value={form.default_capacity}
-            onChange={(e) => setForm({ ...form, default_capacity: parseInt(e.target.value) || 10 })}
+            value={form.defaultCapacity}
+            onChange={(e) => setForm({ ...form, defaultCapacity: parseInt(e.target.value) || 10 })}
             className="input"
           />
         </Field>
@@ -92,16 +86,6 @@ export default function CreateGroup() {
             placeholder="Central Park Field 3"
             value={form.location}
             onChange={(e) => setForm({ ...form, location: e.target.value })}
-            className="input"
-          />
-        </Field>
-
-        <Field label="Your Name">
-          <input
-            type="text"
-            placeholder="John"
-            value={form.organizer}
-            onChange={(e) => setForm({ ...form, organizer: e.target.value })}
             className="input"
           />
         </Field>

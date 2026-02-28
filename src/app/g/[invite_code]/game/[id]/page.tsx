@@ -3,71 +3,68 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { supabase, type Game, type Group, type Rsvp } from "@/lib/supabase";
 import { formatDate, formatTime } from "@/lib/utils";
+
+type GameData = {
+  _id: string;
+  date: string;
+  time: string;
+  location: string;
+  capacity: number;
+  status: string;
+};
+
+type GroupData = {
+  _id: string;
+  name: string;
+  inviteCode: string;
+};
+
+type RsvpData = {
+  _id: string;
+  playerName: string;
+  playerPhone: string | null;
+  status: "in" | "out" | "maybe";
+  guests: number;
+  waitlistPosition: number | null;
+  addedBy: string | null;
+  createdAt: string;
+};
 
 export default function GamePage() {
   const params = useParams();
   const inviteCode = params.invite_code as string;
   const gameId = params.id as string;
 
-  const [group, setGroup] = useState<Group | null>(null);
-  const [game, setGame] = useState<Game | null>(null);
-  const [rsvps, setRsvps] = useState<Rsvp[]>([]);
+  const [group, setGroup] = useState<GroupData | null>(null);
+  const [game, setGame] = useState<GameData | null>(null);
+  const [rsvps, setRsvps] = useState<RsvpData[]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const loadData = useCallback(async () => {
-    const { data: g } = await supabase
-      .from("groups")
-      .select("*")
-      .eq("invite_code", inviteCode)
-      .single();
-    setGroup(g);
-
-    const { data: gm } = await supabase
-      .from("games")
-      .select("*")
-      .eq("id", gameId)
-      .single();
-    setGame(gm);
-
-    const { data: r } = await supabase
-      .from("rsvps")
-      .select("*")
-      .eq("game_id", gameId)
-      .order("created_at", { ascending: true });
-    setRsvps(r || []);
+    try {
+      const res = await fetch(`/api/games/${gameId}`);
+      const data = await res.json();
+      if (data.game) {
+        setGame(data.game);
+        setGroup(data.group);
+        setRsvps(data.rsvps || []);
+      }
+    } catch {
+      // ignore
+    }
     setLoading(false);
-  }, [inviteCode, gameId]);
+  }, [gameId]);
 
   useEffect(() => {
     loadData();
-
-    // Realtime subscription
-    const channel = supabase
-      .channel(`rsvps-${gameId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "rsvps", filter: `game_id=eq.${gameId}` },
-        () => {
-          // Reload rsvps on any change
-          supabase
-            .from("rsvps")
-            .select("*")
-            .eq("game_id", gameId)
-            .order("created_at", { ascending: true })
-            .then(({ data }) => setRsvps(data || []));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [loadData, gameId]);
+    // Poll for updates every 10 seconds instead of realtime
+    const interval = setInterval(loadData, 10000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   // Restore name from localStorage
   useEffect(() => {
@@ -83,52 +80,21 @@ export default function GamePage() {
     setSubmitting(true);
     localStorage.setItem("gameon_name", name.trim());
 
-    const inCount = rsvps.filter((r) => r.status === "in" && r.player_name !== name.trim()).length;
-    const isWaitlisted = status === "in" && game && inCount >= game.capacity;
-
-    // Upsert RSVP
-    const { error } = await supabase
-      .from("rsvps")
-      .upsert(
-        {
-          game_id: gameId,
-          player_name: name.trim(),
-          status,
-          waitlist_position: isWaitlisted ? inCount - (game?.capacity || 0) + 1 : null,
-        },
-        { onConflict: "game_id,player_name" }
-      );
-
-    if (error) {
-      alert("Error: " + error.message);
-    }
-
-    // Recalculate waitlist positions after someone drops out
-    if (status === "out") {
-      await recalcWaitlist();
+    try {
+      const res = await fetch(`/api/games/${gameId}/rsvp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName: name.trim(), status }),
+      });
+      const data = await res.json();
+      if (data.rsvps) {
+        setRsvps(data.rsvps);
+      }
+    } catch {
+      alert("Error saving RSVP");
     }
 
     setSubmitting(false);
-  };
-
-  const recalcWaitlist = async () => {
-    if (!game) return;
-    const { data: current } = await supabase
-      .from("rsvps")
-      .select("*")
-      .eq("game_id", gameId)
-      .eq("status", "in")
-      .order("created_at", { ascending: true });
-
-    if (!current) return;
-
-    for (let i = 0; i < current.length; i++) {
-      const isOver = i >= game.capacity;
-      await supabase
-        .from("rsvps")
-        .update({ waitlist_position: isOver ? i - game.capacity + 1 : null })
-        .eq("id", current[i].id);
-    }
   };
 
   const copyLink = () => {
@@ -140,13 +106,13 @@ export default function GamePage() {
   if (loading) return <p className="py-8 text-center text-[#a3a3a3]">Loading...</p>;
   if (!game || !group) return <p className="py-8 text-center text-[#a3a3a3]">Game not found</p>;
 
-  const ins = rsvps.filter((r) => r.status === "in" && !r.waitlist_position);
-  const waitlist = rsvps.filter((r) => r.status === "in" && r.waitlist_position);
+  const ins = rsvps.filter((r) => r.status === "in" && !r.waitlistPosition);
+  const waitlist = rsvps.filter((r) => r.status === "in" && r.waitlistPosition);
   const maybes = rsvps.filter((r) => r.status === "maybe");
   const outs = rsvps.filter((r) => r.status === "out");
   const totalIn = ins.reduce((sum, r) => sum + 1 + (r.guests || 0), 0);
   const spotsLeft = Math.max(0, game.capacity - totalIn);
-  const myRsvp = rsvps.find((r) => r.player_name === name.trim());
+  const myRsvp = rsvps.find((r) => r.playerName === name.trim());
 
   return (
     <div>
@@ -227,27 +193,27 @@ export default function GamePage() {
             disabled={submitting}
           />
         </div>
-        {myRsvp?.waitlist_position && (
+        {myRsvp?.waitlistPosition && (
           <p className="mt-2 text-center text-sm text-yellow-500">
-            Game is full - you are #{myRsvp.waitlist_position} on the waitlist
+            Game is full - you are #{myRsvp.waitlistPosition} on the waitlist
           </p>
         )}
       </div>
 
       {/* Player Lists */}
-      <PlayerList title={`In (${totalIn})`} players={ins.map((r) => r.guests > 0 ? `${r.player_name} (+${r.guests})` : r.player_name)} color="text-[#10b981]" />
+      <PlayerList title={`In (${totalIn})`} players={ins.map((r) => r.guests > 0 ? `${r.playerName} (+${r.guests})` : r.playerName)} color="text-[#10b981]" />
       {waitlist.length > 0 && (
         <PlayerList
           title={`Waitlist (${waitlist.length})`}
-          players={waitlist.sort((a, b) => (a.waitlist_position || 0) - (b.waitlist_position || 0)).map((r) => `${r.player_name} (#${r.waitlist_position})`)}
+          players={waitlist.sort((a, b) => (a.waitlistPosition || 0) - (b.waitlistPosition || 0)).map((r) => `${r.playerName} (#${r.waitlistPosition})`)}
           color="text-yellow-500"
         />
       )}
       {maybes.length > 0 && (
-        <PlayerList title={`Maybe (${maybes.length})`} players={maybes.map((r) => r.player_name)} color="text-yellow-400" />
+        <PlayerList title={`Maybe (${maybes.length})`} players={maybes.map((r) => r.playerName)} color="text-yellow-400" />
       )}
       {outs.length > 0 && (
-        <PlayerList title={`Out (${outs.length})`} players={outs.map((r) => r.player_name)} color="text-red-400" />
+        <PlayerList title={`Out (${outs.length})`} players={outs.map((r) => r.playerName)} color="text-red-400" />
       )}
     </div>
   );

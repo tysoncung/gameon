@@ -1,4 +1,5 @@
-import { supabase } from "./supabase";
+import { connectDB } from "./mongodb";
+import { Group, Game, Rsvp, Player } from "./models";
 
 // Parse incoming WhatsApp message into a command
 export type BotCommand =
@@ -69,50 +70,36 @@ export async function getOrCreatePlayer(
   name: string,
   groupId: string
 ): Promise<{ id: string; name: string }> {
-  // Try to find existing
-  const { data: existing } = await supabase
-    .from("players")
-    .select("*")
-    .eq("phone", phone)
-    .eq("group_id", groupId)
-    .single();
+  await connectDB();
+
+  const existing = await Player.findOne({ phone, groupId });
 
   if (existing) {
-    // Update name if changed
     if (existing.name !== name) {
-      await supabase
-        .from("players")
-        .update({ name })
-        .eq("id", existing.id);
+      existing.name = name;
+      await existing.save();
     }
-    return { id: existing.id, name: existing.name };
+    return { id: existing._id.toString(), name: existing.name };
   }
 
-  // Create new player
-  const { data: newPlayer } = await supabase
-    .from("players")
-    .insert({ phone, name, group_id: groupId })
-    .select()
-    .single();
-
-  return { id: newPlayer!.id, name };
+  const newPlayer = await Player.create({ phone, name, groupId });
+  return { id: newPlayer._id.toString(), name };
 }
 
 // Find the most recent upcoming game for a group
 export async function findActiveGame(groupId: string) {
+  await connectDB();
   const today = new Date().toISOString().split("T")[0];
-  const { data } = await supabase
-    .from("games")
-    .select("*")
-    .eq("group_id", groupId)
-    .eq("status", "upcoming")
-    .gte("date", today)
-    .order("date", { ascending: true })
-    .order("time", { ascending: true })
-    .limit(1)
-    .single();
 
-  return data;
+  const game = await Game.findOne({
+    groupId,
+    status: "upcoming",
+    date: { $gte: today },
+  })
+    .sort({ date: 1, time: 1 })
+    .lean();
+
+  return game;
 }
 
 // Handle RSVP (in/out/maybe) with +N guest support
@@ -125,34 +112,19 @@ export async function handleRsvp(
   addedBy?: string
 ): Promise<{
   message: string;
-  promoted?: string; // player promoted from waitlist
+  promoted?: string;
 }> {
-  // Get game details
-  const { data: game } = await supabase
-    .from("games")
-    .select("*")
-    .eq("id", gameId)
-    .single();
+  await connectDB();
 
+  const game = await Game.findById(gameId);
   if (!game) return { message: "Game not found." };
 
-  // Get current RSVPs
-  const { data: rsvps } = await supabase
-    .from("rsvps")
-    .select("*")
-    .eq("game_id", gameId)
-    .eq("status", "in")
-    .order("created_at", { ascending: true });
+  // Get current "in" RSVPs
+  const currentRsvps = await Rsvp.find({ gameId, status: "in" }).sort({ createdAt: 1 }).lean();
 
-  const currentRsvps = rsvps || [];
-
-  // Count total spots taken (players + their guests)
-  const existingRsvp = currentRsvps.find(
-    (r) => r.player_name === playerName || r.player_phone === playerPhone
-  );
+  // Count total spots taken excluding this player
   const spotsTaken = currentRsvps.reduce((sum, r) => {
-    // Don't count the current player's old RSVP
-    if (r.player_name === playerName || r.player_phone === playerPhone) return sum;
+    if (r.playerName === playerName || (playerPhone && r.playerPhone === playerPhone)) return sum;
     return sum + 1 + (r.guests || 0);
   }, 0);
 
@@ -164,9 +136,8 @@ export async function handleRsvp(
     const spotsAvailable = game.capacity - spotsTaken;
 
     if (spotsNeeded > spotsAvailable) {
-      // Waitlist
       const waitlistedCount = currentRsvps.filter(
-        (r) => r.waitlist_position !== null && r.player_name !== playerName
+        (r) => r.waitlistPosition !== null && r.playerName !== playerName
       ).length;
       waitlistPosition = waitlistedCount + 1;
     }
@@ -174,29 +145,28 @@ export async function handleRsvp(
 
   // Upsert the RSVP
   const rsvpData: Record<string, unknown> = {
-    game_id: gameId,
-    player_name: playerName,
-    player_phone: playerPhone || null,
+    gameId,
+    playerName,
+    playerPhone: playerPhone || null,
     status,
     guests: status === "in" ? guests : 0,
-    waitlist_position: waitlistPosition,
+    waitlistPosition,
   };
   if (addedBy) {
-    rsvpData.added_by = addedBy;
+    rsvpData.addedBy = addedBy;
   }
-  const { error } = await supabase.from("rsvps").upsert(
-    rsvpData,
-    { onConflict: "game_id,player_name" }
-  );
 
-  if (error) return { message: "Error saving RSVP: " + error.message };
+  await Rsvp.findOneAndUpdate(
+    { gameId, playerName },
+    { $set: rsvpData, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true, new: true }
+  );
 
   // If someone went "out", try to promote from waitlist
   if (status === "out") {
     promoted = await promoteFromWaitlist(gameId, game.capacity);
   }
 
-  // Build response message
   const newSpotsTaken = await countSpotsTaken(gameId);
 
   if (status === "in") {
@@ -219,22 +189,14 @@ export async function handleRsvp(
     };
   }
 
-  // maybe
   return {
     message: `Got it ${playerName}, marked as maybe. ${newSpotsTaken}/${game.capacity} spots filled.`,
   };
 }
 
 async function countSpotsTaken(gameId: string): Promise<number> {
-  const { data } = await supabase
-    .from("rsvps")
-    .select("guests")
-    .eq("game_id", gameId)
-    .eq("status", "in")
-    .is("waitlist_position", null);
-
-  if (!data) return 0;
-  return data.reduce((sum, r) => sum + 1 + (r.guests || 0), 0);
+  const rsvps = await Rsvp.find({ gameId, status: "in", waitlistPosition: null }).lean();
+  return rsvps.reduce((sum, r) => sum + 1 + (r.guests || 0), 0);
 }
 
 async function promoteFromWaitlist(
@@ -244,78 +206,57 @@ async function promoteFromWaitlist(
   const spotsTaken = await countSpotsTaken(gameId);
   if (spotsTaken >= capacity) return undefined;
 
-  // Find first person on waitlist
-  const { data: waitlisted } = await supabase
-    .from("rsvps")
-    .select("*")
-    .eq("game_id", gameId)
-    .eq("status", "in")
-    .not("waitlist_position", "is", null)
-    .order("waitlist_position", { ascending: true })
-    .limit(1);
+  const waitlisted = await Rsvp.find({
+    gameId,
+    status: "in",
+    waitlistPosition: { $ne: null },
+  }).sort({ waitlistPosition: 1 }).limit(1);
 
-  if (!waitlisted || waitlisted.length === 0) return undefined;
+  if (waitlisted.length === 0) return undefined;
 
   const promoted = waitlisted[0];
-
-  // Check if promoting this person (+ guests) fits
   const spotsNeeded = 1 + (promoted.guests || 0);
   const spotsAvailable = capacity - spotsTaken;
 
   if (spotsNeeded > spotsAvailable) return undefined;
 
-  // Promote them
-  await supabase
-    .from("rsvps")
-    .update({ waitlist_position: null })
-    .eq("id", promoted.id);
+  // Promote
+  await Rsvp.updateOne({ _id: promoted._id }, { $set: { waitlistPosition: null } });
 
   // Recalculate remaining waitlist positions
-  const { data: remaining } = await supabase
-    .from("rsvps")
-    .select("id")
-    .eq("game_id", gameId)
-    .eq("status", "in")
-    .not("waitlist_position", "is", null)
-    .order("waitlist_position", { ascending: true });
+  const remaining = await Rsvp.find({
+    gameId,
+    status: "in",
+    waitlistPosition: { $ne: null },
+  }).sort({ waitlistPosition: 1 });
 
-  if (remaining) {
-    for (let i = 0; i < remaining.length; i++) {
-      await supabase
-        .from("rsvps")
-        .update({ waitlist_position: i + 1 })
-        .eq("id", remaining[i].id);
-    }
+  for (let i = 0; i < remaining.length; i++) {
+    await Rsvp.updateOne({ _id: remaining[i]._id }, { $set: { waitlistPosition: i + 1 } });
   }
 
-  return promoted.player_name;
+  return promoted.playerName;
 }
 
 // Build status message for a game
 export async function buildStatusMessage(gameId: string): Promise<string> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("*, groups!inner(name, sport)")
-    .eq("id", gameId)
-    .single();
+  await connectDB();
 
+  const game = await Game.findById(gameId).lean();
   if (!game) return "No active game found.";
 
-  const { data: rsvps } = await supabase
-    .from("rsvps")
-    .select("*")
-    .eq("game_id", gameId)
-    .order("created_at", { ascending: true });
+  const group = await Group.findById(game.groupId).lean();
+  if (!group) return "No active game found.";
 
-  const allRsvps = rsvps || [];
-  const ins = allRsvps.filter((r) => r.status === "in" && !r.waitlist_position);
-  const waitlist = allRsvps.filter((r) => r.status === "in" && r.waitlist_position);
+  const allRsvps = await Rsvp.find({ gameId }).sort({ createdAt: 1 }).lean();
+
+  const ins = allRsvps.filter((r) => r.status === "in" && !r.waitlistPosition);
+  const waitlist = allRsvps.filter((r) => r.status === "in" && r.waitlistPosition);
   const maybes = allRsvps.filter((r) => r.status === "maybe");
   const outs = allRsvps.filter((r) => r.status === "out");
 
   const totalSpots = ins.reduce((s, r) => s + 1 + (r.guests || 0), 0);
 
-  let msg = `-- ${(game as any).groups.name} --\n`;
+  let msg = `-- ${group.name} --\n`;
   msg += `${game.date} at ${game.time}\n`;
   msg += `${game.location || "Location TBD"}\n`;
   msg += `${totalSpots}/${game.capacity} spots filled\n\n`;
@@ -324,8 +265,8 @@ export async function buildStatusMessage(gameId: string): Promise<string> {
     msg += `IN (${ins.length}):\n`;
     ins.forEach((r, i) => {
       const guestTag = r.guests > 0 ? ` (+${r.guests})` : "";
-      const addedBy = !r.player_phone && r.added_by ? ` (added by ${r.added_by})` : "";
-      msg += `${i + 1}. ${r.player_name}${guestTag}${addedBy}\n`;
+      const byTag = !r.playerPhone && r.addedBy ? ` (added by ${r.addedBy})` : "";
+      msg += `${i + 1}. ${r.playerName}${guestTag}${byTag}\n`;
     });
     msg += "\n";
   }
@@ -333,10 +274,10 @@ export async function buildStatusMessage(gameId: string): Promise<string> {
   if (waitlist.length > 0) {
     msg += `WAITLIST (${waitlist.length}):\n`;
     waitlist
-      .sort((a, b) => (a.waitlist_position || 0) - (b.waitlist_position || 0))
+      .sort((a, b) => (a.waitlistPosition || 0) - (b.waitlistPosition || 0))
       .forEach((r) => {
         const guestTag = r.guests > 0 ? ` (+${r.guests})` : "";
-        msg += `#${r.waitlist_position} ${r.player_name}${guestTag}\n`;
+        msg += `#${r.waitlistPosition} ${r.playerName}${guestTag}\n`;
       });
     msg += "\n";
   }
@@ -344,7 +285,7 @@ export async function buildStatusMessage(gameId: string): Promise<string> {
   if (maybes.length > 0) {
     msg += `MAYBE (${maybes.length}):\n`;
     maybes.forEach((r) => {
-      msg += `- ${r.player_name}\n`;
+      msg += `- ${r.playerName}\n`;
     });
     msg += "\n";
   }
@@ -352,7 +293,7 @@ export async function buildStatusMessage(gameId: string): Promise<string> {
   if (outs.length > 0) {
     msg += `OUT (${outs.length}):\n`;
     outs.forEach((r) => {
-      msg += `- ${r.player_name}\n`;
+      msg += `- ${r.playerName}\n`;
     });
   }
 
@@ -361,32 +302,22 @@ export async function buildStatusMessage(gameId: string): Promise<string> {
 
 // Build stats/leaderboard message
 export async function buildStatsMessage(groupId: string): Promise<string> {
-  const { data: games } = await supabase
-    .from("games")
-    .select("id")
-    .eq("group_id", groupId);
+  await connectDB();
 
-  if (!games || games.length === 0) return "No games played yet.";
+  const games = await Game.find({ groupId }).select("_id").lean();
+  if (games.length === 0) return "No games played yet.";
 
-  const gameIds = games.map((g) => g.id);
+  const gameIds = games.map((g) => g._id);
+  const rsvps = await Rsvp.find({ gameId: { $in: gameIds } }).lean();
+  if (rsvps.length === 0) return "No RSVPs yet.";
 
-  const { data: rsvps } = await supabase
-    .from("rsvps")
-    .select("*")
-    .in("game_id", gameIds);
-
-  if (!rsvps || rsvps.length === 0) return "No RSVPs yet.";
-
-  const playerMap = new Map<
-    string,
-    { inCount: number; total: number }
-  >();
+  const playerMap = new Map<string, { inCount: number; total: number }>();
 
   for (const r of rsvps) {
-    if (!playerMap.has(r.player_name)) {
-      playerMap.set(r.player_name, { inCount: 0, total: 0 });
+    if (!playerMap.has(r.playerName)) {
+      playerMap.set(r.playerName, { inCount: 0, total: 0 });
     }
-    const p = playerMap.get(r.player_name)!;
+    const p = playerMap.get(r.playerName)!;
     p.total++;
     if (r.status === "in") p.inCount++;
   }

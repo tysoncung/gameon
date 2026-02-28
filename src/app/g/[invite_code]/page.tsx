@@ -3,44 +3,46 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { supabase, type Group, type Game } from "@/lib/supabase";
 import { formatDate, formatTime } from "@/lib/utils";
+
+type GroupData = {
+  _id: string;
+  name: string;
+  sport: string;
+  location: string;
+  inviteCode: string;
+};
+
+type GameData = {
+  _id: string;
+  date: string;
+  time: string;
+  location: string;
+  capacity: number;
+  status: string;
+  recurring: boolean;
+};
 
 export default function GroupPage() {
   const params = useParams();
   const inviteCode = params.invite_code as string;
-  const [group, setGroup] = useState<Group | null>(null);
-  const [games, setGames] = useState<Game[]>([]);
+  const [group, setGroup] = useState<GroupData | null>(null);
+  const [games, setGames] = useState<GameData[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    loadGroup();
+    fetch(`/api/groups/${inviteCode}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.group) {
+          setGroup(data.group);
+          setGames(data.games || []);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [inviteCode]);
-
-  async function loadGroup() {
-    const { data: g } = await supabase
-      .from("groups")
-      .select("*")
-      .eq("invite_code", inviteCode)
-      .single();
-
-    if (!g) {
-      setLoading(false);
-      return;
-    }
-    setGroup(g);
-
-    const { data: gamesList } = await supabase
-      .from("games")
-      .select("*")
-      .eq("group_id", g.id)
-      .order("date", { ascending: true })
-      .order("time", { ascending: true });
-
-    setGames(gamesList || []);
-    setLoading(false);
-  }
 
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -96,7 +98,7 @@ export default function GroupPage() {
           <p className="py-4 text-center text-[#a3a3a3]">No upcoming games. Schedule one!</p>
         ) : (
           upcoming.map((game) => (
-            <GameCard key={game.id} game={game} inviteCode={inviteCode} />
+            <GameCard key={game._id} game={game} inviteCode={inviteCode} />
           ))
         )}
       </Section>
@@ -104,7 +106,7 @@ export default function GroupPage() {
       {past.length > 0 && (
         <Section title="Past Games">
           {past.map((game) => (
-            <GameCard key={game.id} game={game} inviteCode={inviteCode} />
+            <GameCard key={game._id} game={game} inviteCode={inviteCode} />
           ))}
         </Section>
       )}
@@ -112,10 +114,10 @@ export default function GroupPage() {
   );
 }
 
-function GameCard({ game, inviteCode }: { game: Game; inviteCode: string }) {
+function GameCard({ game, inviteCode }: { game: GameData; inviteCode: string }) {
   return (
     <Link
-      href={`/g/${inviteCode}/game/${game.id}`}
+      href={`/g/${inviteCode}/game/${game._id}`}
       className="block rounded-xl border border-[#262626] bg-[#141414] p-4 transition hover:border-[#10b981]"
     >
       <div className="flex items-center justify-between">
@@ -131,7 +133,7 @@ function GameCard({ game, inviteCode }: { game: Game; inviteCode: string }) {
           </span>
           {game.recurring && (
             <span className="ml-2 rounded bg-[#10b981]/20 px-2 py-0.5 text-xs text-[#10b981]">
-              {game.recurring}
+              recurring
             </span>
           )}
         </div>
