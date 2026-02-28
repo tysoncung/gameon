@@ -2,36 +2,61 @@ import { supabase } from "./supabase";
 
 // Parse incoming WhatsApp message into a command
 export type BotCommand =
-  | { type: "in"; guests: number }
-  | { type: "out" }
-  | { type: "maybe" }
+  | { type: "in"; guests: number; onBehalf?: string }
+  | { type: "out"; onBehalf?: string }
+  | { type: "maybe"; onBehalf?: string }
   | { type: "status" }
   | { type: "stats" }
   | { type: "unknown" };
 
 export function parseCommand(text: string): BotCommand {
-  const msg = text.trim().toLowerCase();
+  const msg = text.trim();
+  const msgLower = msg.toLowerCase();
 
-  // Check for "in +N" or "yes +N" patterns
-  const plusMatch = msg.match(/^(?:in|yes|y)\s*\+\s*(\d+)$/);
+  // "in @Name +N" or "yes @Name +2" - RSVP on behalf with guests
+  const onBehalfPlusMatch = msg.match(/^(?:in|yes|y)\s+@?([a-zA-Z][a-zA-Z0-9_ ]*?)\s*\+\s*(\d+)$/i);
+  if (onBehalfPlusMatch) {
+    return { type: "in", guests: parseInt(onBehalfPlusMatch[2], 10), onBehalf: onBehalfPlusMatch[1].trim() };
+  }
+
+  // "in @Name" or "yes @Name" - RSVP on behalf
+  const onBehalfInMatch = msg.match(/^(?:in|yes|y)\s+@?([a-zA-Z][a-zA-Z0-9_ ]+)$/i);
+  if (onBehalfInMatch) {
+    return { type: "in", guests: 0, onBehalf: onBehalfInMatch[1].trim() };
+  }
+
+  // "out @Name" - mark someone else as out
+  const onBehalfOutMatch = msg.match(/^(?:out|no|n)\s+@?([a-zA-Z][a-zA-Z0-9_ ]+)$/i);
+  if (onBehalfOutMatch) {
+    return { type: "out", onBehalf: onBehalfOutMatch[1].trim() };
+  }
+
+  // "maybe @Name"
+  const onBehalfMaybeMatch = msg.match(/^(?:maybe|m)\s+@?([a-zA-Z][a-zA-Z0-9_ ]+)$/i);
+  if (onBehalfMaybeMatch) {
+    return { type: "maybe", onBehalf: onBehalfMaybeMatch[1].trim() };
+  }
+
+  // Check for "in +N" or "yes +N" patterns (self)
+  const plusMatch = msgLower.match(/^(?:in|yes|y)\s*\+\s*(\d+)$/);
   if (plusMatch) {
     return { type: "in", guests: parseInt(plusMatch[1], 10) };
   }
 
   // Simple commands
-  if (/^(in|yes|y)$/i.test(msg)) {
+  if (/^(in|yes|y)$/i.test(msgLower)) {
     return { type: "in", guests: 0 };
   }
-  if (/^(out|no|n)$/i.test(msg)) {
+  if (/^(out|no|n)$/i.test(msgLower)) {
     return { type: "out" };
   }
-  if (/^(maybe|m)$/i.test(msg)) {
+  if (/^(maybe|m)$/i.test(msgLower)) {
     return { type: "maybe" };
   }
-  if (/^(status|list)$/i.test(msg)) {
+  if (/^(status|list)$/i.test(msgLower)) {
     return { type: "status" };
   }
-  if (/^(stats)$/i.test(msg)) {
+  if (/^(stats)$/i.test(msgLower)) {
     return { type: "stats" };
   }
 
@@ -96,7 +121,8 @@ export async function handleRsvp(
   playerName: string,
   playerPhone: string,
   status: "in" | "out" | "maybe",
-  guests: number = 0
+  guests: number = 0,
+  addedBy?: string
 ): Promise<{
   message: string;
   promoted?: string; // player promoted from waitlist
@@ -147,15 +173,19 @@ export async function handleRsvp(
   }
 
   // Upsert the RSVP
+  const rsvpData: Record<string, unknown> = {
+    game_id: gameId,
+    player_name: playerName,
+    player_phone: playerPhone || null,
+    status,
+    guests: status === "in" ? guests : 0,
+    waitlist_position: waitlistPosition,
+  };
+  if (addedBy) {
+    rsvpData.added_by = addedBy;
+  }
   const { error } = await supabase.from("rsvps").upsert(
-    {
-      game_id: gameId,
-      player_name: playerName,
-      player_phone: playerPhone,
-      status,
-      guests: status === "in" ? guests : 0,
-      waitlist_position: waitlistPosition,
-    },
+    rsvpData,
     { onConflict: "game_id,player_name" }
   );
 
@@ -294,7 +324,8 @@ export async function buildStatusMessage(gameId: string): Promise<string> {
     msg += `IN (${ins.length}):\n`;
     ins.forEach((r, i) => {
       const guestTag = r.guests > 0 ? ` (+${r.guests})` : "";
-      msg += `${i + 1}. ${r.player_name}${guestTag}\n`;
+      const addedBy = !r.player_phone && r.added_by ? ` (added by ${r.added_by})` : "";
+      msg += `${i + 1}. ${r.player_name}${guestTag}${addedBy}\n`;
     });
     msg += "\n";
   }
@@ -395,7 +426,10 @@ export function buildAnnouncementMessage(
     `Reply to RSVP:\n` +
     `- "in" or "yes" = I'm in\n` +
     `- "in +2" = I'm in, bringing 2\n` +
+    `- "in @Dave" = Add Dave\n` +
+    `- "in @Dave +1" = Add Dave + 1 guest\n` +
     `- "out" or "no" = I'm out\n` +
+    `- "out @Dave" = Mark Dave as out\n` +
     `- "maybe" = Maybe\n` +
     `- "status" = See who's in/out\n` +
     `- "stats" = Attendance leaderboard`

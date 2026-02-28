@@ -18,6 +18,9 @@ alter table rsvps add column if not exists guests int not null default 0;
 -- Add phone reference to rsvps (nullable - web RSVPs won't have it)
 alter table rsvps add column if not exists player_phone text default null;
 
+-- Track who added this RSVP (for on-behalf RSVPs)
+alter table rsvps add column if not exists added_by text default null;
+
 -- Reminders table
 create table if not exists reminders (
   id uuid primary key default gen_random_uuid(),

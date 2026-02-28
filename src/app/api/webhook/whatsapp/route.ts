@@ -80,16 +80,28 @@ export async function POST(req: NextRequest) {
 
     switch (command.type) {
       case "in": {
+        // RSVP on behalf of someone else, or self
+        const targetName = command.onBehalf || playerName;
+        const targetPhone = command.onBehalf ? "" : from;
         const result = await handleRsvp(
           game!.id,
-          playerName,
-          from,
+          targetName,
+          targetPhone,
           "in",
-          command.guests
+          command.guests,
+          command.onBehalf ? playerName : undefined
         );
-        replyMessage = result.message;
+        // If on behalf, adjust the message
+        if (command.onBehalf) {
+          const guestText = command.guests > 0 ? ` (+${command.guests} guest${command.guests > 1 ? "s" : ""})` : "";
+          replyMessage = result.message.replace(
+            `Got it ${targetName}!`,
+            `Got it! ${playerName} added ${targetName}${guestText}.`
+          );
+        } else {
+          replyMessage = result.message;
+        }
         if (result.promoted) {
-          // Notify promoted player
           const { data: promotedPlayer } = await supabase
             .from("rsvps")
             .select("player_phone")
@@ -108,8 +120,14 @@ export async function POST(req: NextRequest) {
       }
 
       case "out": {
-        const result = await handleRsvp(game!.id, playerName, from, "out");
-        replyMessage = result.message;
+        const targetName = command.onBehalf || playerName;
+        const targetPhone = command.onBehalf ? "" : from;
+        const result = await handleRsvp(game!.id, targetName, targetPhone, "out");
+        if (command.onBehalf) {
+          replyMessage = `Got it! ${playerName} marked ${targetName} as out. ${result.message.split(". ").pop()}`;
+        } else {
+          replyMessage = result.message;
+        }
         if (result.promoted) {
           const { data: promotedPlayer } = await supabase
             .from("rsvps")
@@ -129,8 +147,14 @@ export async function POST(req: NextRequest) {
       }
 
       case "maybe": {
-        const result = await handleRsvp(game!.id, playerName, from, "maybe");
-        replyMessage = result.message;
+        const targetName = command.onBehalf || playerName;
+        const targetPhone = command.onBehalf ? "" : from;
+        const result = await handleRsvp(game!.id, targetName, targetPhone, "maybe");
+        if (command.onBehalf) {
+          replyMessage = `Got it! ${playerName} marked ${targetName} as maybe.`;
+        } else {
+          replyMessage = result.message;
+        }
         break;
       }
 
