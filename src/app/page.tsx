@@ -12,12 +12,20 @@ export default function Home() {
         Just share a link and let people RSVP.
       </p>
 
-      <Link
-        href="/create"
-        className="rounded-xl bg-[#10b981] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#059669]"
-      >
-        Create a Group
-      </Link>
+      <div className="flex gap-4">
+        <Link
+          href="/create"
+          className="rounded-xl bg-[#10b981] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#059669]"
+        >
+          Create a Group
+        </Link>
+        <Link
+          href="/admin"
+          className="rounded-xl border border-[#262626] bg-[#141414] px-8 py-4 text-lg font-semibold transition hover:border-[#10b981]"
+        >
+          Admin Dashboard
+        </Link>
+      </div>
 
       <div className="mt-16 grid w-full max-w-lg gap-6 text-left sm:grid-cols-3">
         <Feature title="No Sign Up" desc="Players just tap a link and RSVP. Zero friction." />

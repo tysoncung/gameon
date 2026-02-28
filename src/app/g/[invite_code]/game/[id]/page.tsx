@@ -144,7 +144,8 @@ export default function GamePage() {
   const waitlist = rsvps.filter((r) => r.status === "in" && r.waitlist_position);
   const maybes = rsvps.filter((r) => r.status === "maybe");
   const outs = rsvps.filter((r) => r.status === "out");
-  const spotsLeft = Math.max(0, game.capacity - ins.length);
+  const totalIn = ins.reduce((sum, r) => sum + 1 + (r.guests || 0), 0);
+  const spotsLeft = Math.max(0, game.capacity - totalIn);
   const myRsvp = rsvps.find((r) => r.player_name === name.trim());
 
   return (
@@ -176,7 +177,7 @@ export default function GamePage() {
         {/* Capacity bar */}
         <div className="mb-1 flex justify-between text-sm">
           <span>
-            {ins.length}/{game.capacity} confirmed
+            {totalIn}/{game.capacity} confirmed
           </span>
           <span className="text-[#a3a3a3]">
             {spotsLeft > 0 ? `${spotsLeft} spots left` : "FULL"}
@@ -185,7 +186,7 @@ export default function GamePage() {
         <div className="h-2 overflow-hidden rounded-full bg-[#262626]">
           <div
             className="h-full rounded-full bg-[#10b981] transition-all"
-            style={{ width: `${Math.min(100, (ins.length / game.capacity) * 100)}%` }}
+            style={{ width: `${Math.min(100, (totalIn / game.capacity) * 100)}%` }}
           />
         </div>
         {waitlist.length > 0 && (
@@ -234,7 +235,7 @@ export default function GamePage() {
       </div>
 
       {/* Player Lists */}
-      <PlayerList title={`In (${ins.length})`} players={ins.map((r) => r.player_name)} color="text-[#10b981]" />
+      <PlayerList title={`In (${totalIn})`} players={ins.map((r) => r.guests > 0 ? `${r.player_name} (+${r.guests})` : r.player_name)} color="text-[#10b981]" />
       {waitlist.length > 0 && (
         <PlayerList
           title={`Waitlist (${waitlist.length})`}
