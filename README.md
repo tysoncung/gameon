@@ -1,95 +1,147 @@
-# GameOn - WhatsApp RSVP Bot for Pickup Games
+# GameOn - Pickup Game Coordinator
 
-> Organize pickup games with your crew. Players RSVP via WhatsApp or a web link. No app to download.
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://gameon-coral.vercel.app)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)](https://www.mongodb.com/atlas)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> Organize pickup games with your crew. Players RSVP via WhatsApp or web. No app to download.
+
+**[Live Demo](https://gameon-coral.vercel.app)** | **[Report Bug](https://github.com/tysoncung/gameon/issues)** | **[Request Feature](https://github.com/tysoncung/gameon/issues)**
+
+---
+
+## The Problem
+
+Organizing pickup sports games is chaos. Group chats get buried. Nobody knows who's coming. The organizer spends more time counting heads than playing.
+
+## The Solution
+
+GameOn lets players RSVP with a simple WhatsApp message or web link. The organizer sees a real-time headcount. Everyone knows if the game is on.
+
+## Features
+
+- **WhatsApp Bot** - RSVP by texting `in`, `out`, `in +2` (bring friends), `status`
+- **RSVP on Behalf** - Add others: `in @Dave`, `out @Sarah`
+- **Web Dashboard** - Create games, share invite links, track RSVPs
+- **Group System** - Invite codes for your regular crew
+- **Admin Panel** - Manage all groups and games
+- **Auto Reminders** - Daily cron job pings players who haven't responded
+- **Player Stats** - Track attendance across games
 
 ## How It Works
 
-Players RSVP by texting the bot on WhatsApp. The organizer manages everything from a web dashboard.
-
 ```
-ARCHITECTURE
-============
-
-  WhatsApp Group              Twilio             GameOn (Next.js)         MongoDB Atlas
-  +--------------+     +----------------+     +-------------------+     +-----------+
-  |              |     |                |     |                   |     |           |
-  | Player texts |---->| Webhook relay  |---->| /api/webhook/     |---->| Store     |
-  | "in +2"     |     |                |     | whatsapp          |     | RSVP      |
-  |              |<----| Send reply     |<----| Parse + respond   |<----| Query     |
-  |              |     |                |     |                   |     |           |
-  +--------------+     +----------------+     +-------------------+     +-----------+
+WhatsApp Group           Twilio              GameOn API            MongoDB
++-------------+    +---------------+    +----------------+    +-----------+
+| "in +2"     |--->| Webhook relay |--->| Parse + store  |--->| RSVPs     |
+| "status"    |<---| Send reply    |<---| Query + format |<---| Games     |
++-------------+    +---------------+    +----------------+    +-----------+
 ```
+
+**Web flow:** Share invite link -> Players open in browser -> One-tap RSVP
 
 ## Tech Stack
 
-- **Next.js 16** (App Router)
-- **MongoDB Atlas** + **Mongoose** (database + ODM)
-- **Twilio** (WhatsApp messaging)
-- **Tailwind CSS v4** (dark theme, mobile-first)
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 16 (App Router), Tailwind CSS v4, dark theme |
+| Backend | Next.js API Routes, Mongoose ODM |
+| Database | MongoDB Atlas (M0 free tier) |
+| Messaging | Twilio WhatsApp Business API |
+| Hosting | Vercel (Hobby) |
 
-## Setup
-
-### 1. Clone and install
+## Quick Start
 
 ```bash
-git clone <your-repo-url>
+# Clone
+git clone https://github.com/tysoncung/gameon.git
 cd gameon
+
+# Install
 npm install
-```
 
-### 2. MongoDB Atlas
+# Configure
+cp .env.example .env.local
+# Edit .env.local with your MongoDB URI and Twilio credentials
 
-1. Create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas)
-2. Create a database user and whitelist your IP (or allow all with `0.0.0.0/0`)
-3. Get your connection string (looks like `mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/gameon_db`)
-
-Mongoose will auto-create collections and indexes on first use. No migrations needed.
-
-### 3. Environment variables
-
-Copy `.env.local.example` to `.env.local` and fill in your values:
-
-```bash
-cp .env.local.example .env.local
-```
-
-Required variables:
-- `MONGODB_URI` - Your MongoDB Atlas connection string
-- `TWILIO_ACCOUNT_SID` - Twilio account SID
-- `TWILIO_AUTH_TOKEN` - Twilio auth token
-- `TWILIO_WHATSAPP_NUMBER` - Your Twilio WhatsApp number
-- `CRON_SECRET` - Random secret for the reminder cron endpoint
-
-### 4. Run
-
-```bash
+# Run
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## WhatsApp Bot Commands
+### Environment Variables
+
+```env
+MONGODB_URI=mongodb+srv://...
+TWILIO_ACCOUNT_SID=your_sid
+TWILIO_AUTH_TOKEN=your_token
+TWILIO_PHONE_NUMBER=whatsapp:+14155238886
+CRON_SECRET=your_secret
+```
+
+## WhatsApp Commands
 
 | Command | Action |
 |---------|--------|
-| `in` or `yes` | RSVP as in |
-| `in +2` | RSVP as in, bringing 2 guests |
-| `in @Dave` | Add Dave (on behalf) |
-| `in @Dave +1` | Add Dave + 1 guest |
-| `out` or `no` | RSVP as out |
-| `out @Dave` | Mark Dave as out |
-| `maybe` | RSVP as maybe |
-| `status` | See current RSVP list |
-| `stats` | Attendance leaderboard |
+| `in` | RSVP as going |
+| `in +2` | RSVP with 2 guests |
+| `in @Dave` | RSVP Dave as going |
+| `out` | Cancel RSVP |
+| `out @Dave` | Cancel Dave's RSVP |
+| `status` | See current headcount |
+| `help` | List all commands |
 
-## Features
+## Project Structure
 
-- Auto-waitlist with promotion when spots open
-- On-behalf RSVPs (add friends who are not on WhatsApp)
-- Guest tracking (+N)
-- Admin dashboard with PIN authentication
-- Game announcements via WhatsApp
-- Automated 24h and 2h reminders
-- Attendance stats and leaderboard
-- Dark theme, mobile-first design
-- Polling-based live updates on web
+```
+src/
+  app/
+    api/
+      games/          # CRUD for games
+      groups/         # Group management
+      webhook/
+        whatsapp/     # Twilio webhook handler
+      announce/       # Send game announcements
+      cron/
+        reminders/    # Daily reminder cron
+      stats/          # Player statistics
+    g/[invite_code]/  # Public group pages
+    admin/            # Admin dashboard
+    create/           # Create group flow
+  lib/
+    models.ts         # Mongoose schemas
+    mongodb.ts        # DB connection
+    whatsapp-bot.ts   # Bot command parser
+    twilio.ts         # Twilio client
+    utils.ts          # Helpers
+```
+
+## Roadmap
+
+- [x] WhatsApp bot with RSVP commands
+- [x] Web dashboard with invite links
+- [x] RSVP on behalf of others
+- [x] Admin panel
+- [x] Auto reminders (daily cron)
+- [ ] Google auth + user profiles
+- [ ] Recurring games (auto-create weekly)
+- [ ] Web push notifications
+- [ ] Weather check (auto-warn if rain)
+- [ ] Venue search (Google Places)
+- [ ] Leaderboard + attendance streaks
+- [ ] PWA (installable on phone)
+- [ ] Mobile app (Expo)
+
+## Contributing
+
+PRs welcome! See [issues](https://github.com/tysoncung/gameon/issues) for ideas.
+
+## License
+
+MIT
+
+---
+
+Built by [Tyson Cung](https://github.com/tysoncung)
