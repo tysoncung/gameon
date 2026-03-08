@@ -1,170 +1,65 @@
-"use client";
+import type { Metadata } from "next";
+import { connectDB } from "@/lib/mongodb";
+import { Group, Game } from "@/lib/models";
+import GroupClient from "./group-client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
-import { formatDate, formatTime } from "@/lib/utils";
-
-type GroupData = {
-  _id: string;
-  name: string;
-  sport: string;
-  location: string;
-  inviteCode: string;
+type Props = {
+  params: Promise<{ invite_code: string }>;
 };
 
-type GameData = {
-  _id: string;
-  date: string;
-  time: string;
-  location: string;
-  capacity: number;
-  status: string;
-  recurring: boolean;
-};
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { invite_code } = await params;
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || "https://gameon-coral.vercel.app";
+
+  try {
+    await connectDB();
+    const group = await Group.findOne({ inviteCode: invite_code }).lean();
+    if (!group) return {};
+
+    const upcomingCount = await Game.countDocuments({
+      groupId: group._id,
+      status: "upcoming",
+    });
+
+    const title = `${group.name} — ${group.sport}`;
+    const description = `Join ${group.name} on GameOn! ${upcomingCount} upcoming game${upcomingCount !== 1 ? "s" : ""}. RSVP via web or WhatsApp.`;
+
+    const ogParams = new URLSearchParams({
+      title: group.name,
+      subtitle: `${group.sport}${group.location ? ` • ${group.location}` : ""}`,
+      sport: group.sport,
+      stats: `${upcomingCount} upcoming game${upcomingCount !== 1 ? "s" : ""}`,
+    });
+
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        type: "website",
+        images: [
+          {
+            url: `${siteUrl}/api/og?${ogParams.toString()}`,
+            width: 1200,
+            height: 630,
+            alt: title,
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: [`${siteUrl}/api/og?${ogParams.toString()}`],
+      },
+    };
+  } catch {
+    return {};
+  }
+}
 
 export default function GroupPage() {
-  const params = useParams();
-  const inviteCode = params.invite_code as string;
-  const [group, setGroup] = useState<GroupData | null>(null);
-  const [games, setGames] = useState<GameData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/groups/${inviteCode}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.group) {
-          setGroup(data.group);
-          setGames(data.games || []);
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [inviteCode]);
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (loading) return <Loading />;
-  if (!group) return <NotFound />;
-
-  const today = new Date().toISOString().split("T")[0];
-  const upcoming = games.filter((g) => g.date >= today && g.status !== "cancelled");
-  const past = games.filter((g) => g.date < today || g.status === "completed");
-
-  return (
-    <div>
-      <Link href="/" className="mb-4 inline-block text-sm text-[#a3a3a3] hover:text-white">
-        &larr; Home
-      </Link>
-
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{group.name}</h1>
-          <p className="text-[#a3a3a3]">
-            {group.sport} -- {group.location || "No default location"}
-          </p>
-        </div>
-        <button
-          onClick={copyLink}
-          className="shrink-0 rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm transition hover:border-[#10b981]"
-        >
-          {copied ? "Copied!" : "Share Link"}
-        </button>
-      </div>
-
-      <div className="mb-6 flex gap-3">
-        <Link
-          href={`/g/${inviteCode}/new-game`}
-          className="rounded-xl bg-[#10b981] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#059669]"
-        >
-          + New Game
-        </Link>
-        <Link
-          href={`/g/${inviteCode}/stats`}
-          className="rounded-xl border border-[#262626] bg-[#141414] px-5 py-2.5 text-sm font-semibold transition hover:border-[#10b981]"
-        >
-          Stats
-        </Link>
-      </div>
-
-      <Section title="Upcoming Games">
-        {upcoming.length === 0 ? (
-          <p className="py-4 text-center text-[#a3a3a3]">No upcoming games. Schedule one!</p>
-        ) : (
-          upcoming.map((game) => (
-            <GameCard key={game._id} game={game} inviteCode={inviteCode} />
-          ))
-        )}
-      </Section>
-
-      {past.length > 0 && (
-        <Section title="Past Games">
-          {past.map((game) => (
-            <GameCard key={game._id} game={game} inviteCode={inviteCode} />
-          ))}
-        </Section>
-      )}
-    </div>
-  );
-}
-
-function GameCard({ game, inviteCode }: { game: GameData; inviteCode: string }) {
-  return (
-    <Link
-      href={`/g/${inviteCode}/game/${game._id}`}
-      className="block rounded-xl border border-[#262626] bg-[#141414] p-4 transition hover:border-[#10b981]"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-semibold">
-            {formatDate(game.date)} at {formatTime(game.time)}
-          </p>
-          <p className="text-sm text-[#a3a3a3]">{game.location || "TBD"}</p>
-        </div>
-        <div className="text-right">
-          <span className="text-sm text-[#a3a3a3]">
-            Cap: {game.capacity}
-          </span>
-          {game.recurring && (
-            <span className="ml-2 rounded bg-[#10b981]/20 px-2 py-0.5 text-xs text-[#10b981]">
-              recurring
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-8">
-      <h2 className="mb-3 text-lg font-semibold text-[#a3a3a3]">{title}</h2>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
-
-function Loading() {
-  return (
-    <div className="flex min-h-[50vh] items-center justify-center">
-      <p className="text-[#a3a3a3]">Loading...</p>
-    </div>
-  );
-}
-
-function NotFound() {
-  return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
-      <h1 className="mb-2 text-2xl font-bold">Group Not Found</h1>
-      <p className="mb-4 text-[#a3a3a3]">This invite link is invalid or expired.</p>
-      <Link href="/" className="text-[#10b981] hover:underline">Go Home</Link>
-    </div>
-  );
+  return <GroupClient />;
 }
