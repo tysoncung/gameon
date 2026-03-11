@@ -8,6 +8,7 @@ export interface IGroup extends Document {
   location: string;
   inviteCode: string;
   adminPin: string;
+  isPublic: boolean;
   createdAt: Date;
 }
 
@@ -18,6 +19,7 @@ const GroupSchema = new Schema<IGroup>({
   location: { type: String, default: "" },
   inviteCode: { type: String, required: true, unique: true },
   adminPin: { type: String, required: true },
+  isPublic: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
 

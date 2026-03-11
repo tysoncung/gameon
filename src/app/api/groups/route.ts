@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
     const body = await req.json();
-    const { name, sport, defaultCapacity, location, pin } = body;
+    const { name, sport, defaultCapacity, location, pin, isPublic } = body;
 
     if (!name || !pin || pin.length < 4) {
       return NextResponse.json({ error: "Name and PIN (4+ chars) required" }, { status: 400 });
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
       location: location || "",
       inviteCode,
       adminPin: hashPin(pin),
+      isPublic: isPublic !== false,
     });
 
     return NextResponse.json({ inviteCode: group.inviteCode });

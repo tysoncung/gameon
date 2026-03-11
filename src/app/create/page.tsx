@@ -14,6 +14,7 @@ export default function CreateGroup() {
     defaultCapacity: 10,
     location: "",
     pin: "",
+    isPublic: true,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -89,6 +90,21 @@ export default function CreateGroup() {
             className="input"
           />
         </Field>
+
+        <label className="flex items-center gap-3 rounded-xl border border-[#262626] bg-[#141414] p-4">
+          <input
+            type="checkbox"
+            checked={form.isPublic}
+            onChange={(e) => setForm({ ...form, isPublic: e.target.checked })}
+            className="h-4 w-4 accent-[#10b981]"
+          />
+          <div>
+            <span className="font-medium">Make group discoverable</span>
+            <p className="text-xs text-[#a3a3a3]">
+              Your games will appear on the Explore page so anyone can find and join them.
+            </p>
+          </div>
+        </label>
 
         <Field label="Admin PIN (4+ digits)" required>
           <input

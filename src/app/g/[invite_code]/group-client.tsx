@@ -11,6 +11,7 @@ type GroupData = {
   sport: string;
   location: string;
   inviteCode: string;
+  isPublic?: boolean;
 };
 
 type GameData = {
@@ -67,8 +68,13 @@ export default function GroupClient() {
         <div>
           <h1 className="text-2xl font-bold">{group.name}</h1>
           <p className="text-[#a3a3a3]">
-            {group.sport} -- {group.location || "No default location"}
+            {group.sport} · {group.location || "No default location"}
           </p>
+          {group.isPublic && (
+            <span className="mt-1 inline-block rounded-full bg-[#10b981]/20 px-2 py-0.5 text-xs text-[#10b981]">
+              🌐 Public — listed on Explore
+            </span>
+          )}
         </div>
         <button
           onClick={copyLink}
