@@ -32,13 +32,13 @@ export async function GET(req: NextRequest) {
     const total = await Game.countDocuments({
       groupId: { $in: groupIds },
       date: { $gte: today },
-      status: "upcoming",
+      status: { $in: ["open", "confirmed"] },
     });
 
     const games = await Game.find({
       groupId: { $in: groupIds },
       date: { $gte: today },
-      status: "upcoming",
+      status: { $in: ["open", "confirmed"] },
     })
       .sort({ date: 1, time: 1 })
       .skip((page - 1) * limit)

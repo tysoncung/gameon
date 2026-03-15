@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     const upcomingCount = await Game.countDocuments({
       groupId: group._id,
-      status: "upcoming",
+      status: { $in: ["open", "confirmed"] },
     });
 
     const title = `${group.name} — ${group.sport}`;

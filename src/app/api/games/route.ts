@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
     const body = await req.json();
-    const { inviteCode, pin, date, time, location, capacity, recurring } = body;
+    const { inviteCode, pin, date, time, location, capacity, recurring, minPlayers, cutoffTime } = body;
 
     if (!inviteCode || !pin || !date) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
       time: time || "10:00",
       location: location || group.location || "",
       capacity: capacity || group.defaultCapacity,
+      status: "open",
+      minPlayers: minPlayers || 0,
+      cutoffTime: cutoffTime || null,
       recurring: !!recurring,
     });
 

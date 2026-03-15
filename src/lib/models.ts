@@ -30,7 +30,9 @@ export interface IGame extends Document {
   time: string;
   location: string;
   capacity: number;
-  status: "upcoming" | "completed" | "cancelled";
+  status: "draft" | "open" | "confirmed" | "completed" | "cancelled";
+  minPlayers: number;
+  cutoffTime?: string;
   recurring: boolean;
   createdAt: Date;
 }
@@ -41,7 +43,9 @@ const GameSchema = new Schema<IGame>({
   time: { type: String, required: true },
   location: { type: String, default: "" },
   capacity: { type: Number, required: true },
-  status: { type: String, enum: ["upcoming", "completed", "cancelled"], default: "upcoming" },
+  status: { type: String, enum: ["draft", "open", "confirmed", "completed", "cancelled"], default: "open" },
+  minPlayers: { type: Number, default: 0 },
+  cutoffTime: { type: String, default: null },
   recurring: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });

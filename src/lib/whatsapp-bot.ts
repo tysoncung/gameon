@@ -61,6 +61,46 @@ export function parseCommand(text: string): BotCommand {
     return { type: "stats" };
   }
 
+  // --- Natural language matching ---
+
+  // "in" variations
+  const inPhrases = [
+    "i'm in", "im in", "count me in", "yes please", "yep", "yeah", "sure",
+    "down", "lets go", "let's go", "i'll be there", "ill be there", "coming",
+    "sign me up", "absolutely", "for sure", "definitely", "i'm down", "im down",
+  ];
+  if (inPhrases.includes(msgLower)) {
+    return { type: "in", guests: 0 };
+  }
+
+  // "out" variations
+  const outPhrases = [
+    "i'm out", "im out", "can't make it", "cant make it", "not coming", "pass",
+    "skip", "nah", "nope", "can't", "cant", "won't make it", "wont make it",
+    "sorry can't", "sorry cant", "not this time", "count me out",
+  ];
+  if (outPhrases.includes(msgLower)) {
+    return { type: "out" };
+  }
+
+  // "maybe" variations
+  const maybePhrases = [
+    "not sure", "might come", "let me check", "possibly", "perhaps",
+    "we'll see", "well see", "tentative", "idk", "might",
+  ];
+  if (maybePhrases.includes(msgLower)) {
+    return { type: "maybe" };
+  }
+
+  // "status" variations
+  const statusPhrases = [
+    "who's in", "whos in", "who's coming", "whos coming", "how many",
+    "numbers", "attendance", "lineup", "roster",
+  ];
+  if (statusPhrases.includes(msgLower)) {
+    return { type: "status" };
+  }
+
   return { type: "unknown" };
 }
 
@@ -93,7 +133,7 @@ export async function findActiveGame(groupId: string) {
 
   const game = await Game.findOne({
     groupId,
-    status: "upcoming",
+    status: { $in: ["open", "confirmed"] },
     date: { $gte: today },
   })
     .sort({ date: 1, time: 1 })

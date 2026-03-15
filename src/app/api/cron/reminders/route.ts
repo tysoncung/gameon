@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { Game, Group, Player, Reminder } from "@/lib/models";
+import { Game, Group, Player, Reminder, Rsvp } from "@/lib/models";
 import { sendWhatsApp } from "@/lib/twilio";
 import { buildStatusMessage } from "@/lib/whatsapp-bot";
 
@@ -17,13 +17,52 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const results: string[] = [];
 
+    // --- Lifecycle transitions ---
+
+    // 1. Open games past cutoffTime: confirm or cancel based on minPlayers
+    const openGamesWithCutoff = await Game.find({
+      status: "open",
+      cutoffTime: { $ne: null },
+    }).lean();
+
+    for (const game of openGamesWithCutoff) {
+      if (!game.cutoffTime) continue;
+      const cutoff = new Date(game.cutoffTime);
+      if (now < cutoff) continue;
+
+      const rsvpCount = await Rsvp.countDocuments({ gameId: game._id, status: "in" });
+
+      if (game.minPlayers > 0 && rsvpCount < game.minPlayers) {
+        await Game.updateOne({ _id: game._id }, { $set: { status: "cancelled" } });
+        results.push(`Game ${game._id} auto-cancelled (${rsvpCount}/${game.minPlayers} min players)`);
+      } else {
+        await Game.updateOne({ _id: game._id }, { $set: { status: "confirmed" } });
+        results.push(`Game ${game._id} auto-confirmed (${rsvpCount} RSVPs, min ${game.minPlayers})`);
+      }
+    }
+
+    // 2. Open/confirmed games past their date+time → completed
+    const activeGames = await Game.find({
+      status: { $in: ["open", "confirmed"] },
+    }).lean();
+
+    for (const game of activeGames) {
+      const gameDateTime = new Date(`${game.date}T${game.time}`);
+      if (now > gameDateTime) {
+        await Game.updateOne({ _id: game._id }, { $set: { status: "completed" } });
+        results.push(`Game ${game._id} auto-completed (past game time)`);
+      }
+    }
+
+    // --- Reminders ---
+
     const upcomingGames = await Game.find({
-      status: "upcoming",
+      status: { $in: ["open", "confirmed"] },
       date: { $gte: now.toISOString().split("T")[0] },
     }).lean();
 
     if (!upcomingGames || upcomingGames.length === 0) {
-      return NextResponse.json({ message: "No upcoming games", sent: [] });
+      return NextResponse.json({ message: "Lifecycle processed, no upcoming games for reminders", sent: results });
     }
 
     for (const game of upcomingGames) {
