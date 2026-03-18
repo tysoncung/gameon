@@ -26,10 +26,10 @@ export default function Home() {
           Create a Group
         </Link>
         <Link
-          href="/admin"
+          href="/profile"
           className="rounded-xl border border-[#262626] bg-[#141414] px-8 py-4 text-lg font-semibold transition hover:border-[#10b981]"
         >
-          Admin
+          👤 My Profile
         </Link>
       </div>
 

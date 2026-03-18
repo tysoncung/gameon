@@ -105,9 +105,47 @@ const ReminderSchema = new Schema<IReminder>({
   sentAt: { type: Date, default: Date.now },
 });
 
+// --- Profile ---
+export interface IProfile extends Document {
+  name: string;
+  phone: string | null;
+  bio: string;
+  location: string;
+  sports: {
+    name: string;
+    skill: "beginner" | "intermediate" | "advanced" | "pro";
+  }[];
+  availability: string[];
+  gamesPlayed: number;
+  gamesNoShow: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ProfileSchema = new Schema<IProfile>({
+  name: { type: String, required: true },
+  phone: { type: String, default: null, sparse: true },
+  bio: { type: String, default: "" },
+  location: { type: String, default: "" },
+  sports: [{
+    name: { type: String, required: true },
+    skill: { type: String, enum: ["beginner", "intermediate", "advanced", "pro"], default: "intermediate" },
+  }],
+  availability: [{ type: String }],
+  gamesPlayed: { type: Number, default: 0 },
+  gamesNoShow: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+ProfileSchema.index({ name: 1 });
+ProfileSchema.index({ phone: 1 }, { unique: true, sparse: true });
+ProfileSchema.index({ "sports.name": 1 });
+
 // Export models (handle hot-reload in dev)
 export const Group: Model<IGroup> = mongoose.models.Group || mongoose.model<IGroup>("Group", GroupSchema);
 export const Game: Model<IGame> = mongoose.models.Game || mongoose.model<IGame>("Game", GameSchema);
 export const Rsvp: Model<IRsvp> = mongoose.models.Rsvp || mongoose.model<IRsvp>("Rsvp", RsvpSchema);
 export const Player: Model<IPlayer> = mongoose.models.Player || mongoose.model<IPlayer>("Player", PlayerSchema);
 export const Reminder: Model<IReminder> = mongoose.models.Reminder || mongoose.model<IReminder>("Reminder", ReminderSchema);
+export const Profile: Model<IProfile> = mongoose.models.Profile || mongoose.model<IProfile>("Profile", ProfileSchema);
