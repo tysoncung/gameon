@@ -142,6 +142,25 @@ ProfileSchema.index({ name: 1 });
 ProfileSchema.index({ phone: 1 }, { unique: true, sparse: true });
 ProfileSchema.index({ "sports.name": 1 });
 
+// --- Indexes ---
+
+// Group: lookup by inviteCode (unique already), filter by isPublic + sport
+GroupSchema.index({ isPublic: 1, sport: 1 });
+
+// Game: lookup by groupId + sort by date/time, filter by status + date range
+GameSchema.index({ groupId: 1, date: 1, time: 1 });
+GameSchema.index({ status: 1, date: 1 });
+GameSchema.index({ groupId: 1, status: 1 });
+
+// Rsvp: lookup by gameId + status (already has unique on gameId+playerName)
+RsvpSchema.index({ gameId: 1, status: 1, waitlistPosition: 1 });
+
+// Player: lookup by groupId
+PlayerSchema.index({ groupId: 1 });
+
+// Reminder: lookup by gameId + type to check duplicates
+ReminderSchema.index({ gameId: 1, reminderType: 1 }, { unique: true });
+
 // Export models (handle hot-reload in dev)
 export const Group: Model<IGroup> = mongoose.models.Group || mongoose.model<IGroup>("Group", GroupSchema);
 export const Game: Model<IGame> = mongoose.models.Game || mongoose.model<IGame>("Game", GameSchema);
