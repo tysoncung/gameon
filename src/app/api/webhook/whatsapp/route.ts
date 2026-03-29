@@ -9,6 +9,8 @@ import {
   handleRsvp,
   buildStatusMessage,
   buildStatsMessage,
+  resolveDay,
+  createGameFromBot,
 } from "@/lib/whatsapp-bot";
 
 export async function POST(req: NextRequest) {
@@ -55,11 +57,31 @@ export async function POST(req: NextRequest) {
       await getOrCreatePlayer(from, playerName, groupId);
     }
 
+    // Handle create command before finding active game (since there may not be one yet)
+    if (command.type === "create") {
+      const date = resolveDay(command.day);
+      const result = await createGameFromBot(
+        groupId,
+        date,
+        command.time,
+        command.sport,
+        command.location,
+        command.capacity
+      );
+
+      if (result.success) {
+        await sendWhatsApp(from, `Game created by ${playerName}!\n\n${result.message}`);
+      } else {
+        await sendWhatsApp(from, result.message);
+      }
+      return emptyTwiml();
+    }
+
     // Find active game
     const game = await findActiveGame(groupId);
 
     if (!game && command.type !== "stats") {
-      await sendWhatsApp(from, "No upcoming games scheduled. Ask your organizer to create one!");
+      await sendWhatsApp(from, "No upcoming games scheduled. Create one with:\ncreate Sunday 10am Soccer at Willetton Reserve");
       return emptyTwiml();
     }
 

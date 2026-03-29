@@ -8,6 +8,7 @@ export type BotCommand =
   | { type: "maybe"; onBehalf?: string }
   | { type: "status" }
   | { type: "stats" }
+  | { type: "create"; day: string; time: string; sport?: string; location?: string; capacity?: number }
   | { type: "unknown" };
 
 export function parseCommand(text: string): BotCommand {
@@ -101,7 +102,107 @@ export function parseCommand(text: string): BotCommand {
     return { type: "status" };
   }
 
+  // "create" command: create <day> <time> <sport> at <location> [for <capacity>]
+  // e.g. "create Sunday 10am Soccer at Willetton Reserve"
+  // e.g. "create tomorrow 6pm Basketball at the park for 12"
+  const createMatch = msg.match(
+    /^create\s+(\w+)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(.+?)(?:\s+at\s+(.+?))?(?:\s+for\s+(\d+))?$/i
+  );
+  if (createMatch) {
+    const [, dayStr, timeStr, sportAndMaybeLoc, locationFromAt, capacityStr] = createMatch;
+    let sport = sportAndMaybeLoc.trim();
+    let location = locationFromAt?.trim();
+    
+    // If no "at" separator, sport is the whole middle part
+    // Clean up sport name
+    sport = sport.replace(/\s+at$/, "").trim();
+
+    return {
+      type: "create",
+      day: dayStr,
+      time: normalizeTime(timeStr),
+      sport: sport || undefined,
+      location: location || undefined,
+      capacity: capacityStr ? parseInt(capacityStr, 10) : undefined,
+    };
+  }
+
   return { type: "unknown" };
+}
+
+// Normalize time strings like "10am", "6pm", "14:30", "6:30pm" to "HH:MM"
+function normalizeTime(timeStr: string): string {
+  const t = timeStr.trim().toLowerCase();
+  
+  // Match "6pm", "10am", "6:30pm", "10:30am"
+  const match = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2] || "00";
+    const period = match[3];
+    
+    if (period === "pm" && hours !== 12) hours += 12;
+    if (period === "am" && hours === 12) hours = 0;
+    
+    return `${hours.toString().padStart(2, "0")}:${minutes}`;
+  }
+  
+  // Match "14:30" or "9:00"
+  const militaryMatch = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (militaryMatch) {
+    return `${militaryMatch[1].padStart(2, "0")}:${militaryMatch[2]}`;
+  }
+  
+  // Just a number like "10" - assume AM
+  const plainMatch = t.match(/^(\d{1,2})$/);
+  if (plainMatch) {
+    return `${plainMatch[1].padStart(2, "0")}:00`;
+  }
+  
+  return "10:00"; // fallback
+}
+
+// Resolve a day name ("sunday", "tomorrow", "monday") to a YYYY-MM-DD date string
+export function resolveDay(dayStr: string): string {
+  const d = dayStr.toLowerCase();
+  const now = new Date();
+  
+  if (d === "today") {
+    return formatDateISO(now);
+  }
+  
+  if (d === "tomorrow") {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return formatDateISO(tomorrow);
+  }
+  
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const dayIndex = dayNames.indexOf(d);
+  
+  if (dayIndex !== -1) {
+    const currentDay = now.getDay();
+    let daysAhead = dayIndex - currentDay;
+    if (daysAhead <= 0) daysAhead += 7; // Always next occurrence
+    const target = new Date(now);
+    target.setDate(target.getDate() + daysAhead);
+    return formatDateISO(target);
+  }
+  
+  // Try parsing as a date directly (e.g. "2026-04-05" or "Apr 5")
+  const parsed = new Date(dayStr);
+  if (!isNaN(parsed.getTime())) {
+    return formatDateISO(parsed);
+  }
+  
+  // Fallback: next 7 days from now
+  const nextWeek = new Date(now);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  return formatDateISO(nextWeek);
+}
+
+function formatDateISO(date: Date): string {
+  return date.toISOString().split("T")[0];
 }
 
 // Get or create a player by phone number in a group
@@ -378,6 +479,52 @@ export async function buildStatsMessage(groupId: string): Promise<string> {
   });
 
   return msg.trim();
+}
+
+// Create a game from WhatsApp bot command
+export async function createGameFromBot(
+  groupId: string,
+  date: string,
+  time: string,
+  sport?: string,
+  location?: string,
+  capacity?: number
+): Promise<{ success: boolean; message: string; gameId?: string }> {
+  await connectDB();
+
+  const group = await Group.findById(groupId).lean();
+  if (!group) return { success: false, message: "Group not found." };
+
+  const game = await Game.create({
+    groupId: group._id,
+    date,
+    time,
+    location: location || group.location || "",
+    capacity: capacity || group.defaultCapacity,
+    status: "open",
+    minPlayers: 0,
+    cutoffTime: null,
+    recurring: false,
+  });
+
+  const sportName = sport || group.sport;
+  const loc = location || group.location || "TBD";
+  const cap = capacity || group.defaultCapacity;
+
+  const announcement = buildAnnouncementMessage(
+    group.name,
+    sportName,
+    date,
+    time,
+    loc,
+    cap
+  );
+
+  return {
+    success: true,
+    message: announcement,
+    gameId: game._id.toString(),
+  };
 }
 
 // Build game announcement message
