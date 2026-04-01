@@ -32,6 +32,12 @@ export default function Home() {
           Create a Group
         </Link>
         <Link
+          href="/activity"
+          className="rounded-xl border border-[#262626] bg-[#141414] px-8 py-4 text-lg font-semibold transition hover:border-[#10b981]"
+        >
+          📡 Activity
+        </Link>
+        <Link
           href="/profile"
           className="rounded-xl border border-[#262626] bg-[#141414] px-8 py-4 text-lg font-semibold transition hover:border-[#10b981]"
         >
