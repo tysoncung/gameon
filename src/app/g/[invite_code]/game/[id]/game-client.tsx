@@ -161,7 +161,7 @@ export default function GameClient() {
       </div>
 
       {/* RSVP Section */}
-      <div className="mb-6 rounded-xl border border-[#262626] bg-[#141414] p-5">
+      <div className="mb-6 rounded-xl border border-[#262626] bg-[#141414] p-4 sm:p-5 sticky bottom-16 z-10 sm:static sm:bottom-auto sm:z-auto">
         <h2 className="mb-3 text-lg font-semibold">RSVP</h2>
         <input
           type="text"
@@ -236,7 +236,7 @@ function RsvpButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-xl py-3 text-sm font-semibold text-white transition ${
+      className={`rounded-xl py-3.5 text-sm font-semibold text-white transition active:scale-[0.97] ${
         active ? color : "bg-[#262626] hover:bg-[#333]"
       } disabled:opacity-50`}
     >

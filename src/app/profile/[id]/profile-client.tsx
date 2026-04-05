@@ -115,7 +115,7 @@ export default function ProfileClient() {
         {profile.bio && <p className="mb-4 text-[#a3a3a3]">{profile.bio}</p>}
 
         {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className="grid grid-cols-3 gap-2 text-center sm:gap-3">
           <StatCard label="Games" value={totalRsvps.toString()} />
           <StatCard
             label="Reliability"
@@ -207,7 +207,7 @@ export default function ProfileClient() {
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#262626] bg-[#0a0a0a] p-3">
-      <p className="text-lg font-bold">{value}</p>
+      <p className="text-base font-bold sm:text-lg truncate">{value}</p>
       <p className="text-xs text-[#a3a3a3]">{label}</p>
     </div>
   );

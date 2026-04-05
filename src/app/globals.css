@@ -41,3 +41,27 @@ body {
   background: #141414;
   color: #fafafa;
 }
+
+/* Safe area insets for notched phones */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .mb-safe { margin-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Horizontal scroll for filter pills */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* Better touch targets */
+@media (pointer: coarse) {
+  .touch-target { min-height: 44px; min-width: 44px; }
+}
+
+/* Bottom nav spacing */
+.has-bottom-nav { padding-bottom: 5rem; }
+
+/* Smooth transitions for mobile interactions */
+.tap-highlight { -webkit-tap-highlight-color: transparent; }

@@ -64,7 +64,7 @@ export default function GroupClient() {
         &larr; Home
       </Link>
 
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{group.name}</h1>
           <p className="text-[#a3a3a3]">
@@ -87,13 +87,13 @@ export default function GroupClient() {
       <div className="mb-6 flex gap-3">
         <Link
           href={`/g/${inviteCode}/new-game`}
-          className="rounded-xl bg-[#10b981] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#059669]"
+          className="rounded-xl bg-[#10b981] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#059669] active:scale-[0.98]"
         >
           + New Game
         </Link>
         <Link
           href={`/g/${inviteCode}/stats`}
-          className="rounded-xl border border-[#262626] bg-[#141414] px-5 py-2.5 text-sm font-semibold transition hover:border-[#10b981]"
+          className="rounded-xl border border-[#262626] bg-[#141414] px-5 py-2.5 text-sm font-semibold transition hover:border-[#10b981] active:scale-[0.98]"
         >
           Stats
         </Link>

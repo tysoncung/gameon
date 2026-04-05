@@ -1,7 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { BottomNav } from "./components/bottom-nav";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gameon-coral.vercel.app";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0a0a0a",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -34,6 +43,11 @@ export const metadata: Metadata = {
       "Organize pickup games with your crew. Players RSVP via WhatsApp or web. No app to download.",
     images: [`${siteUrl}/api/og`],
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "GameOn",
+  },
 };
 
 export default function RootLayout({
@@ -43,8 +57,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#0a0a0a] text-[#fafafa] antialiased">
-        <main className="mx-auto max-w-2xl px-4 py-6">{children}</main>
+      <body className="min-h-screen bg-[#0a0a0a] text-[#fafafa] antialiased tap-highlight">
+        <main className="mx-auto max-w-2xl px-4 py-4 pb-20 sm:py-6 sm:pb-6">{children}</main>
+        <BottomNav />
       </body>
     </html>
   );

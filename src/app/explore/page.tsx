@@ -85,7 +85,7 @@ export default function ExplorePage() {
       </div>
 
       {/* Sport Filter Pills */}
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="scrollbar-hide -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         <FilterPill label="All Sports" value="All" active={sport} onClick={setSport} />
         {SPORTS.map((s) => (
           <FilterPill

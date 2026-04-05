@@ -142,7 +142,7 @@ export default function ForYouPage() {
       {/* Profile context chip */}
       {profileSummary && (
         <div className="mb-6 rounded-xl border border-[#262626] bg-[#141414] p-3">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="scrollbar-hide -mx-3 flex items-center gap-2 overflow-x-auto px-3 text-sm sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
             <span className="text-[#a3a3a3]">Matching based on:</span>
             {profileSummary.sports.map((s) => (
               <span

@@ -197,7 +197,7 @@ export default function ActivityPage() {
         ← Home
       </Link>
 
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="mb-1 text-2xl font-bold">📡 Activity Feed</h1>
           <p className="text-[#a3a3a3]">
@@ -218,7 +218,7 @@ export default function ActivityPage() {
       </div>
 
       {/* Sport Filter */}
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="scrollbar-hide -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         <FilterPill label="All" value="All" active={sport} onClick={setSport} />
         {SPORTS.map((s) => (
           <FilterPill
