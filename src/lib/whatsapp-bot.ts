@@ -1,5 +1,5 @@
 import { connectDB } from "./mongodb";
-import { Group, Game, Rsvp, Player } from "./models";
+import { Group, Game, Rsvp, Player, OptOut } from "./models";
 
 // Parse incoming WhatsApp message into a command
 export type BotCommand =
@@ -8,6 +8,9 @@ export type BotCommand =
   | { type: "maybe"; onBehalf?: string }
   | { type: "status" }
   | { type: "stats" }
+  | { type: "stop" }
+  | { type: "start" }
+  | { type: "help" }
   | { type: "create"; day: string; time: string; sport?: string; location?: string; capacity?: number }
   | { type: "unknown" };
 
@@ -100,6 +103,17 @@ export function parseCommand(text: string): BotCommand {
   ];
   if (statusPhrases.includes(msgLower)) {
     return { type: "status" };
+  }
+
+  // opt-out / opt-in / help commands
+  if (/^(stop|unsubscribe|opt.?out|quiet|mute|no.?more|leave)$/i.test(msgLower)) {
+    return { type: "stop" };
+  }
+  if (/^(start|subscribe|opt.?in|resume|unmute|rejoin)$/i.test(msgLower)) {
+    return { type: "start" };
+  }
+  if (/^(help|commands|\?)$/i.test(msgLower)) {
+    return { type: "help" };
   }
 
   // "create" command: create <day> <time> <sport> at <location> [for <capacity>]
@@ -525,6 +539,120 @@ export async function createGameFromBot(
     message: announcement,
     gameId: game._id.toString(),
   };
+}
+
+// Check if a player has opted out of reminders
+export async function isOptedOut(phone: string, groupId?: string): Promise<boolean> {
+  await connectDB();
+  const query: Record<string, unknown> = { phone };
+  if (groupId) {
+    // Opted out globally OR from this specific group
+    const optOut = await OptOut.findOne({
+      phone,
+      $or: [{ groupId: null }, { groupId }],
+    }).lean();
+    return !!optOut;
+  } else {
+    const optOut = await OptOut.findOne({ phone, groupId: null }).lean();
+    return !!optOut;
+  }
+}
+
+// Opt a player out of reminders
+export async function optOut(
+  phone: string,
+  groupId?: string
+): Promise<{ message: string }> {
+  await connectDB();
+
+  // Use null for global opt-out, or the specific groupId
+  const gId = groupId || null;
+
+  try {
+    await OptOut.findOneAndUpdate(
+      { phone, groupId: gId },
+      { $set: { phone, groupId: gId, optedOutAt: new Date() } },
+      { upsert: true, new: true }
+    );
+  } catch {
+    // Duplicate key — already opted out, that's fine
+  }
+
+  if (groupId) {
+    const group = await Group.findById(groupId).lean();
+    const groupName = group?.name || "this group";
+    return {
+      message:
+        `You've stopped receiving reminders for ${groupName}. ` +
+        `You can still RSVP any time. ` +
+        `Reply "start" to re-enable reminders.`,
+    };
+  }
+
+  return {
+    message:
+      "You've stopped receiving all GameOn reminders. " +
+      "You can still RSVP any time by messaging this number. " +
+      "Reply \"start\" to re-enable reminders.",
+  };
+}
+
+// Opt a player back in to reminders
+export async function optIn(
+  phone: string,
+  groupId?: string
+): Promise<{ message: string }> {
+  await connectDB();
+
+  const gId = groupId || null;
+
+  // Remove the specific opt-out (and the global one too if re-joining a group)
+  await OptOut.deleteMany({
+    phone,
+    $or: [
+      { groupId: gId },
+      ...(groupId ? [{ groupId: null }] : []),
+    ],
+  });
+
+  if (groupId) {
+    const group = await Group.findById(groupId).lean();
+    const groupName = group?.name || "this group";
+    return {
+      message:
+        `Welcome back! You're now receiving reminders for ${groupName} again. ` +
+        `Reply "stop" at any time to opt out.`,
+    };
+  }
+
+  return {
+    message:
+      "Welcome back! You're now receiving GameOn reminders again. " +
+      "Reply \"stop\" at any time to opt out.",
+  };
+}
+
+// Build help message
+export function buildHelpMessage(): string {
+  return (
+    "GameOn Commands:\n\n" +
+    "RSVP:\n" +
+    "  in / yes — I'm playing\n" +
+    "  out / no — I'm out\n" +
+    "  maybe — Not sure yet\n" +
+    "  in +2 — I'm in, bringing 2 guests\n" +
+    "  in @Dave — Add Dave\n" +
+    "  out @Dave — Remove Dave\n\n" +
+    "INFO:\n" +
+    "  status — Who's in/out\n" +
+    "  stats — Attendance leaderboard\n\n" +
+    "REMINDERS:\n" +
+    "  stop — Stop receiving reminders\n" +
+    "  start — Re-enable reminders\n\n" +
+    "ADMIN:\n" +
+    '  create Sunday 10am Soccer at Willetton Reserve\n' +
+    "  create tomorrow 6pm Basketball at the park for 12"
+  );
 }
 
 // Build game announcement message

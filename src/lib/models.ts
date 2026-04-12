@@ -105,6 +105,23 @@ const ReminderSchema = new Schema<IReminder>({
   sentAt: { type: Date, default: Date.now },
 });
 
+// --- OptOut ---
+export interface IOptOut extends Document {
+  phone: string;
+  groupId: mongoose.Types.ObjectId | null;
+  optedOutAt: Date;
+}
+
+const OptOutSchema = new Schema<IOptOut>({
+  phone: { type: String, required: true },
+  // null = opted out globally (from all groups)
+  groupId: { type: Schema.Types.ObjectId, ref: "Group", default: null },
+  optedOutAt: { type: Date, default: Date.now },
+});
+
+OptOutSchema.index({ phone: 1, groupId: 1 }, { unique: true });
+OptOutSchema.index({ phone: 1 });
+
 // --- Profile ---
 export interface IProfile extends Document {
   name: string;
@@ -168,3 +185,4 @@ export const Rsvp: Model<IRsvp> = mongoose.models.Rsvp || mongoose.model<IRsvp>(
 export const Player: Model<IPlayer> = mongoose.models.Player || mongoose.model<IPlayer>("Player", PlayerSchema);
 export const Reminder: Model<IReminder> = mongoose.models.Reminder || mongoose.model<IReminder>("Reminder", ReminderSchema);
 export const Profile: Model<IProfile> = mongoose.models.Profile || mongoose.model<IProfile>("Profile", ProfileSchema);
+export const OptOut: Model<IOptOut> = mongoose.models.OptOut || mongoose.model<IOptOut>("OptOut", OptOutSchema);

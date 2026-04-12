@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { Game, Group, Player, Reminder, Rsvp } from "@/lib/models";
+import { Game, Group, Player, Reminder, Rsvp, OptOut } from "@/lib/models";
 import { sendWhatsApp } from "@/lib/twilio";
 import { buildStatusMessage } from "@/lib/whatsapp-bot";
 
@@ -93,6 +93,17 @@ export async function GET(req: NextRequest) {
       const group = await Group.findById(game.groupId).lean();
       if (!group) continue;
 
+      // Get all opted-out phones for this group in one query
+      const groupIdStr = game.groupId.toString();
+      const optedOutDocs = await OptOut.find({
+        phone: { $in: players.map((p) => p.phone) },
+        $or: [{ groupId: null }, { groupId: game.groupId }],
+      }).lean();
+      const optedOutPhones = new Set(optedOutDocs.map((o) => o.phone));
+
+      const eligiblePlayers = players.filter((p) => !optedOutPhones.has(p.phone));
+      if (eligiblePlayers.length === 0) continue;
+
       const status = await buildStatusMessage(game._id.toString());
       const timeLabel = reminderType === "24h" ? "tomorrow" : "in 2 hours";
 
@@ -100,11 +111,14 @@ export async function GET(req: NextRequest) {
         `Reminder: ${group.name} is ${timeLabel}!\n` +
         `${game.date} at ${game.time} @ ${game.location || "TBD"}\n\n` +
         `${status}\n\n` +
-        `Haven't RSVP'd? Reply "in" or "out" now!`;
+        `Haven't RSVP'd? Reply "in" or "out" now!\n` +
+        `Reply "stop" to stop receiving reminders.`;
 
-      for (const player of players) {
+      let sentCount = 0;
+      for (const player of eligiblePlayers) {
         try {
           await sendWhatsApp(player.phone, reminder);
+          sentCount++;
         } catch (err) {
           console.error(`Failed to send reminder to ${player.phone}:`, err);
         }
@@ -115,7 +129,9 @@ export async function GET(req: NextRequest) {
         reminderType,
       });
 
-      results.push(`Sent ${reminderType} reminder for game ${game._id} to ${players.length} players`);
+      const skippedCount = players.length - eligiblePlayers.length;
+      const skippedNote = skippedCount > 0 ? ` (${skippedCount} opted out)` : "";
+      results.push(`Sent ${reminderType} reminder for game ${game._id} to ${sentCount}/${players.length} players${skippedNote}`);
     }
 
     return NextResponse.json({ message: "Reminders processed", sent: results });

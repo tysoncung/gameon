@@ -9,8 +9,11 @@ import {
   handleRsvp,
   buildStatusMessage,
   buildStatsMessage,
+  buildHelpMessage,
   resolveDay,
   createGameFromBot,
+  optOut,
+  optIn,
 } from "@/lib/whatsapp-bot";
 
 export async function POST(req: NextRequest) {
@@ -26,6 +29,24 @@ export async function POST(req: NextRequest) {
     }
 
     const command = parseCommand(body);
+
+    // Handle stop/start/help before player lookup — these work even for unknown users
+    if (command.type === "stop") {
+      const result = await optOut(from);
+      await sendWhatsApp(from, result.message);
+      return emptyTwiml();
+    }
+
+    if (command.type === "start") {
+      const result = await optIn(from);
+      await sendWhatsApp(from, result.message);
+      return emptyTwiml();
+    }
+
+    if (command.type === "help") {
+      await sendWhatsApp(from, buildHelpMessage());
+      return emptyTwiml();
+    }
 
     if (command.type === "unknown") {
       return emptyTwiml();
