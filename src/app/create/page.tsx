@@ -15,6 +15,7 @@ export default function CreateGroup() {
     location: "",
     pin: "",
     isPublic: true,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Perth",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,6 +107,19 @@ export default function CreateGroup() {
           </div>
         </label>
 
+        <Field label="Timezone (where are your games played?)" required>
+          <select
+            value={form.timezone}
+            onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+            className="input"
+            required
+          >
+            {timeZoneOptions().map((tz) => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
+        </Field>
+
         <Field label="Admin PIN (4+ digits)" required>
           <input
             type="password"
@@ -131,6 +145,23 @@ export default function CreateGroup() {
       </form>
     </div>
   );
+}
+
+function timeZoneOptions() {
+  // Short list of commonly relevant zones (broad Asia, Australia, EU, US major cities)
+  return [
+    { value: "Australia/Perth", label: "AWST (Perth)" },
+    { value: "Australia/Sydney", label: "AEST (Sydney)" },
+    { value: "Asia/Singapore", label: "SGT (Singapore)" },
+    { value: "Asia/Kuala_Lumpur", label: "MYT (Kuala Lumpur)" },
+    { value: "Asia/Hong_Kong", label: "HKT (Hong Kong)" },
+    { value: "Asia/Tokyo", label: "JST (Tokyo)" },
+    { value: "Europe/London", label: "GMT/BST (London)" },
+    { value: "Europe/Paris", label: "CET/CEST (Paris)" },
+    { value: "America/New_York", label: "ET (New York)" },
+    { value: "America/Los_Angeles", label: "PT (Los Angeles)" },
+    { value: "UTC", label: "UTC" },
+  ];
 }
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {

@@ -9,6 +9,7 @@ export interface IGroup extends Document {
   inviteCode: string;
   adminPin: string;
   isPublic: boolean;
+  timezone: string; // e.g. "Australia/Perth"
   createdAt: Date;
 }
 
@@ -20,6 +21,7 @@ const GroupSchema = new Schema<IGroup>({
   inviteCode: { type: String, required: true, unique: true },
   adminPin: { type: String, required: true },
   isPublic: { type: Boolean, default: false },
+  timezone: { type: String, required: true, default: "Australia/Perth" },
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -4,6 +4,20 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { SPORTS, formatDate, formatTime } from "@/lib/utils";
 
+function formatDateTz(date: string, time: string, timezone?: string) {
+  try {
+    const t = time || "10:00";
+    const iso = date + "T" + t.padEnd(5, ':00');
+    const d = new Date(iso + 'Z'); // interpret as UTC base
+    // fallback to Australia/Perth if unknown
+    const tz = timezone || "Australia/Perth";
+    return d.toLocaleString("en-AU", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return date + (time ? (" " + time) : "");
+  }
+}
+
+
 const SPORT_EMOJI: Record<string, string> = {
   Soccer: "⚽",
   Basketball: "🏀",
@@ -179,7 +193,7 @@ function ExploreGameCard({ game }: { game: ExploreGame }) {
       <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
         <div>
           <span className="text-[#a3a3a3]">📅 </span>
-          {formatDate(game.date)} at {formatTime(game.time)}
+          {formatDateTz(game.date, game.time, game.group?.timezone)}
         </div>
         <div>
           <span className="text-[#a3a3a3]">📍 </span>

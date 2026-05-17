@@ -4,6 +4,19 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { SPORTS, formatDate, formatTime } from "@/lib/utils";
 
+function formatDateTz(date: string, time: string, timezone?: string) {
+  try {
+    const t = time || "10:00";
+    const iso = date + "T" + t.padEnd(5, ':00');
+    const d = new Date(iso + 'Z');
+    const tz = timezone || "Australia/Perth";
+    return d.toLocaleString("en-AU", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return date + (time ? (" " + time) : "");
+  }
+}
+
+
 const SPORT_EMOJI: Record<string, string> = {
   Soccer: "⚽", Basketball: "🏀", Tennis: "🎾", Volleyball: "🏐",
   Badminton: "🏸", Baseball: "⚾", Football: "🏈", Cricket: "🏏",
@@ -84,7 +97,7 @@ function ActivityMessage({ item }: { item: ActivityItem }) {
             {emoji} {item.groupName}
           </Link>
           <span className="text-[#a3a3a3]">
-            {" "}— {formatDate(item.gameDate)} at {formatTime(item.gameTime)}
+            {" "}— {formatDateTz(item.gameDate, item.gameTime, item.timezone)}
           </span>
         </p>
       );
@@ -99,7 +112,7 @@ function ActivityMessage({ item }: { item: ActivityItem }) {
             {emoji} {item.groupName}
           </Link>
           <span className="text-[#a3a3a3]">
-            {" "}— {formatDate(item.gameDate)} at {formatTime(item.gameTime)}
+            {" "}— {formatDateTz(item.gameDate, item.gameTime, item.timezone)}
             {item.location && ` · ${item.location}`}
           </span>
         </p>
@@ -115,7 +128,7 @@ function ActivityMessage({ item }: { item: ActivityItem }) {
           </Link>
           <span className="text-[#a3a3a3]">
             {" "}is full! {item.confirmed}/{item.capacity} confirmed
-            {" "}— {formatDate(item.gameDate)}
+            {" "}— {formatDateTz(item.gameDate, item.gameTime, item.timezone)}
           </span>
         </p>
       );
@@ -129,6 +142,7 @@ function ActivityMessage({ item }: { item: ActivityItem }) {
             {emoji} {item.groupName}
           </Link>
           <span className="text-[#a3a3a3]"> game completed — nice session!</span>
+          <span className="text-[#a3a3a3]"> — {formatDateTz(item.gameDate, item.gameTime, item.timezone)}</span>
         </p>
       );
   }
